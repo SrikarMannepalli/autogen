@@ -11,6 +11,7 @@ class ResponseFormat(TypedDict):
 
 class ThinkingConfig(TypedDict, total=False):
     """Configuration for thinking mode."""
+
     type: Required[Literal["enabled", "disabled"]]
     budget_tokens: Optional[int]  # Required if type is "enabled"
 
@@ -66,6 +67,7 @@ class AnthropicBedrockClientConfiguration(AnthropicClientConfiguration, total=Fa
 # Pydantic equivalents of the above TypedDicts
 class ThinkingConfigModel(BaseModel):
     """Configuration for thinking mode."""
+
     type: Literal["enabled", "disabled"]
     budget_tokens: int | None = None  # Required if type is "enabled"
 

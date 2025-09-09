@@ -465,8 +465,8 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         self._create_args = create_args
         self._total_usage = RequestUsage(prompt_tokens=0, completion_tokens=0)
         self._actual_usage = RequestUsage(prompt_tokens=0, completion_tokens=0)
-        
-        # Store last used tools for anthropic API requirement  
+
+        # Store last used tools for anthropic API requirement
         self._last_used_tools: List[ToolParam] = []
 
     def _serialize_message(self, message: MessageParam) -> Dict[str, Any]:
@@ -516,15 +516,14 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         messages = _messages
 
         return messages
-    
-    
+
     def _get_thinking_config(self, extra_create_args: Mapping[str, Any]) -> Dict[str, Any]:
         """
         Get the thinking configuration for API calls
-        
+
         Args:
             extra_create_args: Extra arguments that may contain thinking config
-            
+
         Returns:
             dict: Thinking configuration or empty dict if not provided
         """
@@ -533,12 +532,11 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         if thinking_config is None:
             # Check if thinking is specified in base create_args
             thinking_config = self._create_args.get("thinking")
-            
+
         if thinking_config is None:
             return {}
-        
+
         return {"thinking": thinking_config}
-    
 
     def _rstrip_last_assistant_message(self, messages: Sequence[LLMMessage]) -> Sequence[LLMMessage]:
         """
@@ -669,12 +667,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         for param in ["top_p", "top_k", "stop_sequences", "metadata"]:
             if param in create_args:
                 request_args[param] = create_args[param]
-        
+
         # Add thinking configuration if available
         thinking_config = self._get_thinking_config(extra_create_args)
         if thinking_config:
             request_args.update(thinking_config)
-        
+
         # Execute the request
         future: asyncio.Task[Message] = asyncio.ensure_future(self._client.messages.create(**request_args))  # type: ignore
 
@@ -705,7 +703,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
 
         # Check if the response includes tool uses
         tool_uses = [block for block in result.content if getattr(block, "type", None) == "tool_use"]
-        
+
         # Check for thinking blocks
         thinking_blocks = [block for block in result.content if getattr(block, "type", None) == "thinking"]
 
@@ -888,12 +886,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         for param in ["top_p", "top_k", "stop_sequences", "metadata"]:
             if param in create_args:
                 request_args[param] = create_args[param]
-        
+
         # Add thinking configuration if available
         thinking_config = self._get_thinking_config(extra_create_args)
         if thinking_config:
             request_args.update(thinking_config)
-        
+
         # Stream the response
         stream_future: asyncio.Task[AsyncStream[RawMessageStreamEvent]] = asyncio.ensure_future(
             cast(Coroutine[Any, Any, AsyncStream[RawMessageStreamEvent]], self._client.messages.create(**request_args))
