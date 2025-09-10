@@ -18,6 +18,18 @@ from ._types import (
     TopLogprob,
     UserMessage,
 )
+from ._cache_utils import (
+    create_cached_system_message,
+    create_cached_user_message,
+    create_cached_system_message_with_ttl,
+    create_cached_user_message_with_ttl,
+    create_cached_function_result_message,
+    create_cached_function_result_message_with_ttl,
+    get_cache_control,
+    EPHEMERAL_CACHE,
+    EPHEMERAL_CACHE_1H,
+    EPHEMERAL_CACHE_24H,
+)
 
 __all__ = [
     "ModelCapabilities",
@@ -36,4 +48,15 @@ __all__ = [
     "ModelFamily",
     "ModelInfo",
     "validate_model_info",
+    # Cache utilities
+    "create_cached_system_message",
+    "create_cached_user_message",
+    "create_cached_system_message_with_ttl",
+    "create_cached_user_message_with_ttl",
+    "create_cached_function_result_message",
+    "create_cached_function_result_message_with_ttl",
+    "get_cache_control",
+    "EPHEMERAL_CACHE",
+    "EPHEMERAL_CACHE_1H",
+    "EPHEMERAL_CACHE_24H",
 ]

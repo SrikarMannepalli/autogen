@@ -200,10 +200,23 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
     assert_valid_name(message.source)
 
     if isinstance(message.content, str):
-        return {
-            "role": "user",
-            "content": __empty_content_to_whitespace(message.content),
-        }
+        content = __empty_content_to_whitespace(message.content)
+        
+        # Check if message has cache_control enabled
+        if message.cache_control:
+            return {
+                "role": "user",
+                "content": [{
+                    "type": "text",
+                    "text": content,
+                    "cache_control": message.cache_control
+                }],
+            }
+        else:
+            return {
+                "role": "user",
+                "content": content,
+            }
     else:
         blocks: List[Union[TextBlockParam, ImageBlockParam]] = []
 
@@ -230,8 +243,18 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
         }
 
 
-def system_message_to_anthropic(message: SystemMessage) -> str:
-    return __empty_content_to_whitespace(message.content)
+def system_message_to_anthropic(message: SystemMessage) -> Union[str, List[Dict[str, Any]]]:
+    content = __empty_content_to_whitespace(message.content)
+    
+    # Check if message has cache_control enabled
+    if message.cache_control:
+        return [{
+            "type": "text",
+            "text": content,
+            "cache_control": message.cache_control
+        }]
+    else:
+        return content
 
 
 def assistant_message_to_anthropic(message: AssistantMessage) -> MessageParam:
@@ -289,13 +312,17 @@ def tool_message_to_anthropic(message: FunctionExecutionResultMessage) -> List[M
     content_blocks: List[ToolResultBlockParam] = []
 
     for result in message.content:
-        content_blocks.append(
-            ToolResultBlockParam(
-                type="tool_result",
-                tool_use_id=result.call_id,
-                content=result.content,
-            )
+        tool_result_block = ToolResultBlockParam(
+            type="tool_result",
+            tool_use_id=result.call_id,
+            content=result.content,
         )
+        
+        # Add cache control to the first tool result block if message-level caching is enabled
+        if message.cache_control and len(content_blocks) == 0:
+            tool_result_block["cache_control"] = message.cache_control
+            
+        content_blocks.append(tool_result_block)
 
     return [
         {
@@ -1189,6 +1216,7 @@ class AnthropicChatCompletionClient(
         top_p (float, optional): Controls diversity via nucleus sampling. Default is 1.0.
         top_k (int, optional): Controls diversity via top-k sampling. Default is -1 (disabled).
         model_info (ModelInfo, optional): The capabilities of the model. Required if using a custom model.
+        enable_prompt_caching (bool, optional): Enable prompt caching for improved performance. Default is True.
 
     To use this client, you must install the Anthropic extension:
 
@@ -1209,6 +1237,7 @@ class AnthropicChatCompletionClient(
             anthropic_client = AnthropicChatCompletionClient(
                 model="claude-3-sonnet-20240229",
                 api_key="your-api-key",  # Optional if ANTHROPIC_API_KEY is set in environment
+                enable_prompt_caching=True,  # Enable prompt caching
             )
 
             result = await anthropic_client.create([UserMessage(content="What is the capital of France?", source="user")])  # type: ignore
@@ -1226,7 +1255,7 @@ class AnthropicChatCompletionClient(
 
         config = {
             "provider": "AnthropicChatCompletionClient",
-            "config": {"model": "claude-3-sonnet-20240229"},
+            "config": {"model": "claude-3-sonnet-20240229", "enable_prompt_caching": True},
         }
 
         client = ChatCompletionClient.load_component(config)
@@ -1297,6 +1326,7 @@ class AnthropicBedrockChatCompletionClient(
         top_k (int, optional): Controls diversity via top-k sampling. Default is -1 (disabled).
         model_info (ModelInfo, optional): The capabilities of the model. Required if using a custom model.
         bedrock_info (BedrockInfo, optional): The capabilities of the model in bedrock. Required if using a model from AWS bedrock.
+        enable_prompt_caching (bool, optional): Enable prompt caching for improved performance. Default is True.
 
     To use this client, you must install the Anthropic extension:
 
@@ -1326,6 +1356,7 @@ class AnthropicBedrockChatCompletionClient(
                     aws_session_token="<aws_session_token>",
                     aws_region="<aws_region>",
                 ),
+                enable_prompt_caching=True,  # Enable prompt caching
             )
 
             result = await anthropic_client.create([UserMessage(content="What is the capital of France?", source="user")])  # type: ignore
