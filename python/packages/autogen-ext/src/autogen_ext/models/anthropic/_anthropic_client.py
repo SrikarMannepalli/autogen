@@ -54,10 +54,12 @@ from autogen_core.models import (
     FinishReasons,
     FunctionExecutionResultMessage,
     LLMMessage,
+    ModelCapabilities, # type: ignore
     ModelInfo,
     RequestUsage,
     SystemMessage,
     UserMessage,
+    validate_model_info,
 )
 from autogen_core.tools import Tool, ToolSchema
 from autogen_core.utils import extract_json_from_str
@@ -1224,7 +1226,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         return self._total_usage
 
     @property
-    def capabilities(self) -> ModelInfo:  # type: ignore
+    def capabilities(self) -> ModelCapabilities:  # type: ignore
         warnings.warn("capabilities is deprecated, use model_info instead", DeprecationWarning, stacklevel=2)
         return self._model_info
 
