@@ -7,6 +7,7 @@ from ._model_client import (
 )
 from ._types import (
     AssistantMessage,
+    CacheUsage,
     ChatCompletionTokenLogprob,
     CreateResult,
     FinishReasons,
@@ -41,6 +42,7 @@ __all__ = [
     "FunctionExecutionResultMessage",
     "LLMMessage",
     "RequestUsage",
+    "CacheUsage",
     "FinishReasons",
     "CreateResult",
     "TopLogprob",
