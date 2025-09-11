@@ -22,9 +22,6 @@ class SystemMessage(BaseModel):
 
     content: str
     """The content of the message."""
-    
-    cache_control: Dict[str, Any] | None = None
-    """Cache control settings for prompt caching. Set to {"type": "ephemeral"} to enable caching."""
 
     type: Literal["SystemMessage"] = "SystemMessage"
 
@@ -37,9 +34,6 @@ class UserMessage(BaseModel):
 
     source: str
     """The name of the agent that sent this message."""
-    
-    cache_control: Dict[str, Any] | None = None
-    """Cache control settings for prompt caching. Set to {"type": "ephemeral"} to enable caching."""
 
     type: Literal["UserMessage"] = "UserMessage"
 
@@ -79,9 +73,6 @@ class FunctionExecutionResultMessage(BaseModel):
     """Function execution result message contains the output of multiple function calls."""
 
     content: List[FunctionExecutionResult]
-    
-    cache_control: Dict[str, Any] | None = None
-    """Cache control settings for prompt caching. Set to {"type": "ephemeral"} to enable caching."""
 
     type: Literal["FunctionExecutionResultMessage"] = "FunctionExecutionResultMessage"
 
