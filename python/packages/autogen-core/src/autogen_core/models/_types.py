@@ -83,9 +83,16 @@ LLMMessage = Annotated[
 
 
 @dataclass
+class CacheUsage:
+    """Usage information for prompt caching across providers."""
+    cache_read_tokens: int = 0
+
+
+@dataclass
 class RequestUsage:
     prompt_tokens: int
     completion_tokens: int
+    cache_usage: Optional[CacheUsage] = None
 
 
 FinishReasons = Literal["stop", "length", "function_calls", "content_filter", "unknown"]

@@ -48,17 +48,12 @@ from autogen_core import (
 from autogen_core.logging import LLMCallEvent, LLMStreamEndEvent, LLMStreamStartEvent
 from autogen_core.models import (
     AssistantMessage,
-    ChatCompletionClient,
-    CreateResult,
-    FinishReasons,
+    CacheUsage,
     FunctionExecutionResultMessage,
     LLMMessage,
-    ModelCapabilities,  # type: ignore
-    ModelInfo,
     RequestUsage,
     SystemMessage,
     UserMessage,
-    validate_model_info,
 )
 from autogen_core.tools import Tool, ToolSchema
 from autogen_core.utils import extract_json_from_str
@@ -720,17 +715,19 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         result: Message = cast(Message, await future)  # type: ignore
 
         # Extract usage statistics
+        cache_usage = None
+        cache_read_tokens = getattr(result.usage, 'cache_read_input_tokens', 0) or 0
+        if cache_read_tokens > 0:
+            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens)
+        
         usage = RequestUsage(
             prompt_tokens=result.usage.input_tokens,
             completion_tokens=result.usage.output_tokens,
+            cache_usage=cache_usage,
         )
         
-        # Check if caching was used
-        cached = False
-        if hasattr(result.usage, 'cache_creation_input_tokens') or hasattr(result.usage, 'cache_read_input_tokens'):
-            cache_creation = getattr(result.usage, 'cache_creation_input_tokens', 0) or 0
-            cache_read = getattr(result.usage, 'cache_read_input_tokens', 0) or 0
-            cached = (cache_creation > 0) or (cache_read > 0)
+        # Check if caching was used (for backward compatibility)
+        cached = cache_usage is not None
         serializable_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
 
         logger.info(
@@ -954,7 +951,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         input_tokens: int = 0
         output_tokens: int = 0
         stop_reason: Optional[str] = None
-        cached: bool = False
+        cache_read_tokens: int = 0
 
         first_chunk = True
         serialized_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
@@ -1029,20 +1026,23 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                     if hasattr(chunk.message.usage, "output_tokens"):
                         output_tokens = chunk.message.usage.output_tokens
                     
-                    # Check if caching was used
+                    # Extract cache read tokens
                     usage_obj = chunk.message.usage
-                    if hasattr(usage_obj, 'cache_creation_input_tokens') or hasattr(usage_obj, 'cache_read_input_tokens'):
-                        cache_creation = getattr(usage_obj, 'cache_creation_input_tokens', 0) or 0
-                        cache_read = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
-                        cached = (cache_creation > 0) or (cache_read > 0)
+                    cache_read_tokens = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
 
         # Prepare the final response
+        cache_usage = None
+        if cache_read_tokens > 0:
+            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens)
+            
         usage = RequestUsage(
             prompt_tokens=input_tokens,
             completion_tokens=output_tokens,
+            cache_usage=cache_usage,
         )
         
-        # cached will be set during the main processing loop above
+        # Check if caching was used (for backward compatibility)
+        cached = cache_usage is not None
 
         # Determine content based on what was received
         content: Union[str, List[FunctionCall]]
