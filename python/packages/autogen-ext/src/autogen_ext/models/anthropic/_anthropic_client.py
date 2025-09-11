@@ -954,6 +954,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         input_tokens: int = 0
         output_tokens: int = 0
         stop_reason: Optional[str] = None
+        cached: bool = False
 
         first_chunk = True
         serialized_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
@@ -1027,6 +1028,13 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                         input_tokens = chunk.message.usage.input_tokens
                     if hasattr(chunk.message.usage, "output_tokens"):
                         output_tokens = chunk.message.usage.output_tokens
+                    
+                    # Check if caching was used
+                    usage_obj = chunk.message.usage
+                    if hasattr(usage_obj, 'cache_creation_input_tokens') or hasattr(usage_obj, 'cache_read_input_tokens'):
+                        cache_creation = getattr(usage_obj, 'cache_creation_input_tokens', 0) or 0
+                        cache_read = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
+                        cached = (cache_creation > 0) or (cache_read > 0)
 
         # Prepare the final response
         usage = RequestUsage(
@@ -1034,17 +1042,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             completion_tokens=output_tokens,
         )
         
-        # Check if caching was used by examining chunks for cache usage info
-        cached = False
-        for chunk in stream_chunks:
-            if chunk.type == "message_start":
-                if hasattr(chunk, "message") and hasattr(chunk.message, "usage"):
-                    usage_obj = chunk.message.usage
-                    if hasattr(usage_obj, 'cache_creation_input_tokens') or hasattr(usage_obj, 'cache_read_input_tokens'):
-                        cache_creation = getattr(usage_obj, 'cache_creation_input_tokens', 0) or 0
-                        cache_read = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
-                        cached = (cache_creation > 0) or (cache_read > 0)
-                        break
+        # cached will be set during the main processing loop above
 
         # Determine content based on what was received
         content: Union[str, List[FunctionCall]]
