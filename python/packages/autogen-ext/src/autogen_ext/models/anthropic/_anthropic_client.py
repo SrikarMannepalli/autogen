@@ -724,6 +724,13 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             prompt_tokens=result.usage.input_tokens,
             completion_tokens=result.usage.output_tokens,
         )
+        
+        # Check if caching was used
+        cached = False
+        if hasattr(result.usage, 'cache_creation_input_tokens') or hasattr(result.usage, 'cache_read_input_tokens'):
+            cache_creation = getattr(result.usage, 'cache_creation_input_tokens', 0) or 0
+            cache_read = getattr(result.usage, 'cache_read_input_tokens', 0) or 0
+            cached = (cache_creation > 0) or (cache_read > 0)
         serializable_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
 
         logger.info(
@@ -790,7 +797,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             finish_reason=normalize_stop_reason(result.stop_reason),
             content=content,
             usage=usage,
-            cached=False,
+            cached=cached,
             thought=thought,
         )
 
@@ -1026,6 +1033,18 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             prompt_tokens=input_tokens,
             completion_tokens=output_tokens,
         )
+        
+        # Check if caching was used by examining chunks for cache usage info
+        cached = False
+        for chunk in stream_chunks:
+            if chunk.type == "message_start":
+                if hasattr(chunk, "message") and hasattr(chunk.message, "usage"):
+                    usage_obj = chunk.message.usage
+                    if hasattr(usage_obj, 'cache_creation_input_tokens') or hasattr(usage_obj, 'cache_read_input_tokens'):
+                        cache_creation = getattr(usage_obj, 'cache_creation_input_tokens', 0) or 0
+                        cache_read = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
+                        cached = (cache_creation > 0) or (cache_read > 0)
+                        break
 
         # Determine content based on what was received
         content: Union[str, List[FunctionCall]]
@@ -1076,7 +1095,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             finish_reason=normalize_stop_reason(stop_reason),
             content=content,
             usage=usage,
-            cached=False,
+            cached=cached,
             thought=thought,
         )
 
