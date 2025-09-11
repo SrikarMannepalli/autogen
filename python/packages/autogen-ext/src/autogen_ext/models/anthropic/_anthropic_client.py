@@ -723,8 +723,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         # Extract usage statistics
         cache_usage = None
         cache_read_tokens = getattr(result.usage, 'cache_read_input_tokens', 0) or 0
-        if cache_read_tokens > 0:
-            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens)
+        cache_creation_tokens = getattr(result.usage, 'cache_creation_input_tokens', 0) or 0
+        if cache_read_tokens > 0 or cache_creation_tokens > 0:
+            cache_usage = CacheUsage(
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_input_tokens=cache_creation_tokens
+            )
         
         usage = RequestUsage(
             prompt_tokens=result.usage.input_tokens,
@@ -1032,14 +1036,18 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                     if hasattr(chunk.message.usage, "output_tokens"):
                         output_tokens = chunk.message.usage.output_tokens
                     
-                    # Extract cache read tokens
+                    # Extract cache tokens
                     usage_obj = chunk.message.usage
                     cache_read_tokens = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
+                    cache_creation_tokens = getattr(usage_obj, 'cache_creation_input_tokens', 0) or 0
 
         # Prepare the final response
         cache_usage = None
-        if cache_read_tokens > 0:
-            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens)
+        if cache_read_tokens > 0 or cache_creation_tokens > 0:
+            cache_usage = CacheUsage(
+                cache_read_tokens=cache_read_tokens,
+                cache_creation_input_tokens=cache_creation_tokens
+            )
             
         usage = RequestUsage(
             prompt_tokens=input_tokens,
