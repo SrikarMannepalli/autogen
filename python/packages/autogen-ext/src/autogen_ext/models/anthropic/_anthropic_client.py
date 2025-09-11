@@ -49,8 +49,12 @@ from autogen_core.logging import LLMCallEvent, LLMStreamEndEvent, LLMStreamStart
 from autogen_core.models import (
     AssistantMessage,
     CacheUsage,
+    ChatCompletionClient,
+    CreateResult,
+    FinishReasons,
     FunctionExecutionResultMessage,
     LLMMessage,
+    ModelInfo,
     RequestUsage,
     SystemMessage,
     UserMessage,
@@ -1220,7 +1224,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         return self._total_usage
 
     @property
-    def capabilities(self) -> ModelCapabilities:  # type: ignore
+    def capabilities(self) -> ModelInfo:  # type: ignore
         warnings.warn("capabilities is deprecated, use model_info instead", DeprecationWarning, stacklevel=2)
         return self._model_info
 
