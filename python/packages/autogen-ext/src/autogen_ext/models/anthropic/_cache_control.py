@@ -11,8 +11,10 @@ class CacheControl:
 class AnthropicSystemMessage(SystemMessage):
     """Anthropic-specific system message with cache control support."""
     
-    def __init__(self, content: str, cache_control: Optional[CacheControl] = None):
-        super().__init__(content=content)
+    cache_control: Optional[CacheControl] = None
+    
+    def __init__(self, content: str, cache_control: Optional[CacheControl] = None, **kwargs):
+        super().__init__(content=content, **kwargs)
         self.cache_control = cache_control
     
     @classmethod
@@ -24,8 +26,10 @@ class AnthropicSystemMessage(SystemMessage):
 class AnthropicUserMessage(UserMessage):
     """Anthropic-specific user message with cache control support."""
     
-    def __init__(self, content: Union[str, List[Any]], source: str, cache_control: Optional[CacheControl] = None):
-        super().__init__(content=content, source=source)
+    cache_control: Optional[CacheControl] = None
+    
+    def __init__(self, content: Union[str, List[Any]], source: str, cache_control: Optional[CacheControl] = None, **kwargs):
+        super().__init__(content=content, source=source, **kwargs)
         self.cache_control = cache_control
     
     @classmethod
@@ -37,8 +41,10 @@ class AnthropicUserMessage(UserMessage):
 class AnthropicFunctionExecutionResultMessage(FunctionExecutionResultMessage):
     """Anthropic-specific function execution result message with per-result cache control support."""
     
-    def __init__(self, content: List[Any], cache_control_config: Optional[Dict[int, CacheControl]] = None):
-        super().__init__(content=content)
+    cache_control_config: Optional[Dict[int, CacheControl]] = None
+    
+    def __init__(self, content: List[Any], cache_control_config: Optional[Dict[int, CacheControl]] = None, **kwargs):
+        super().__init__(content=content, **kwargs)
         self.cache_control_config = cache_control_config or {}
     
     def set_cache_control_for_result(self, index: int, cache_control: CacheControl) -> None:
