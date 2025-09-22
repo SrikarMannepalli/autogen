@@ -201,11 +201,11 @@ def __empty_content_to_whitespace(
 def user_message_to_anthropic(message: UserMessage) -> MessageParam:
     assert_valid_name(message.source)
 
+    # Apply cache_control if message has it (from AnthropicUserMessage)
+    cache_control = getattr(message, 'cache_control', None)
+
     if isinstance(message.content, str):
         content = __empty_content_to_whitespace(message.content)
-        
-        # Apply cache_control if message has it (from AnthropicUserMessage)
-        cache_control = getattr(message, 'cache_control', None)
         if cache_control:
             return {
                 "role": "user",
@@ -244,7 +244,7 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
         if cache_control and blocks:
             for block in reversed(blocks):
                 if block.get("type") == "text":
-                    block["cache_control"] = cache_control
+                    block["cache_control"] = {"type": cache_control.type}
                     break
 
         return {
@@ -943,6 +943,9 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         if thinking_config:
             request_args.update(thinking_config)
 
+        # Extract stream_thought flag
+        stream_thought = extra_create_args.get("stream_thought", False)
+
         # Stream the response
         stream_future: asyncio.Task[AsyncStream[RawMessageStreamEvent]] = asyncio.ensure_future(
             cast(Coroutine[Any, Any, AsyncStream[RawMessageStreamEvent]], self._client.messages.create(**request_args))
@@ -998,12 +1001,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                     if delta_text:
                         yield delta_text
                 elif hasattr(chunk.delta, "type") and chunk.delta.type == "thinking_delta":
-                    # Handle thinking content
+                    # Handle thinking content - aggregate by default, stream if opt-in flag is set
                     if hasattr(chunk.delta, "thinking"):
                         delta_thinking = chunk.delta.thinking
                         thinking_content.append(delta_thinking)
-                        # Optionally yield thinking content as it streams
-                        if delta_thinking:
+                        # Only yield thinking content if stream_thought is enabled
+                        if stream_thought and delta_thinking:
                             yield delta_thinking
                 # Handle tool input deltas - they come as InputJSONDelta
                 elif hasattr(chunk.delta, "type") and chunk.delta.type == "input_json_delta":

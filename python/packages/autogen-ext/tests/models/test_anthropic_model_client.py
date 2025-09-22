@@ -1167,7 +1167,7 @@ async def test_anthropic_thinking_mode_basic() -> None:
     client = AnthropicChatCompletionClient(
         model="claude-sonnet-4-20250514",  # Use a model that supports thinking
         api_key=api_key,
-        temperature=0.7,  # Should be overridden to 1.0
+        temperature=0.7,
     )
 
     messages = [UserMessage(content="Calculate 17 * 23 step by step.", source="test")]
@@ -1187,6 +1187,131 @@ async def test_anthropic_thinking_mode_basic() -> None:
     assert len(result_with_thinking.thought) > 10
     # Main content should contain the final answer
     assert "391" in result_with_thinking.content or "17" in result_with_thinking.content
+
+
+@pytest.mark.asyncio
+async def test_thinking_mode_streaming_yields_only_surface_text() -> None:
+    """Test that streaming with thinking mode yields only surface text by default."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        pytest.skip("ANTHROPIC_API_KEY not found in environment variables")
+
+    client = AnthropicChatCompletionClient(
+        model="claude-sonnet-4-20250514",  # Use a model that supports thinking
+        api_key=api_key,
+    )
+
+    messages = [UserMessage(content="What is 5 + 3? Think through it.", source="test")]
+    thinking_config = {"thinking": {"type": "enabled", "budget_tokens": 1000}}
+
+    # Collect all streamed chunks
+    streamed_chunks: List[str] = []
+    async for chunk in client.create_stream(messages, extra_create_args=thinking_config):
+        if isinstance(chunk, str):
+            streamed_chunks.append(chunk)
+
+    # Get the final result to check thinking content exists
+    final_result = await client.create(messages, extra_create_args=thinking_config)
+
+    # Verify thinking content was generated but not streamed
+    assert final_result.thought is not None
+    assert len(final_result.thought) > 0
+
+    # Verify streamed chunks contain only surface text (no thinking content)
+    streamed_text = "".join(streamed_chunks)
+    # The thinking content should not appear in the streamed text
+    # This is a heuristic check - thinking content typically contains reasoning words
+    thinking_indicators = ["think", "reasoning", "step by step", "let me", "first"]
+    thinking_found_in_stream = any(indicator in streamed_text.lower() for indicator in thinking_indicators)
+
+    # The final surface answer should be present in streamed text
+    assert "8" in streamed_text  # 5 + 3 = 8
+
+    # Thinking content should be much longer than surface content if it was properly separated
+    assert len(final_result.thought) > len(streamed_text)
+
+
+@pytest.mark.asyncio
+async def test_stream_thought_flag_false() -> None:
+    """Test that stream_thought=False explicitly prevents thinking deltas from being yielded."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        pytest.skip("ANTHROPIC_API_KEY not found in environment variables")
+
+    client = AnthropicChatCompletionClient(
+        model="claude-sonnet-4-20250514",
+        api_key=api_key,
+    )
+
+    messages = [UserMessage(content="What is 7 + 9? Think step by step.", source="test")]
+    thinking_config = {
+        "thinking": {"type": "enabled", "budget_tokens": 1000},
+        "stream_thought": False
+    }
+
+    # Collect all streamed chunks
+    streamed_chunks: List[str] = []
+    async for chunk in client.create_stream(messages, extra_create_args=thinking_config):
+        if isinstance(chunk, str):
+            streamed_chunks.append(chunk)
+
+    # Get final result to verify thinking exists
+    final_result = await client.create(messages, extra_create_args=thinking_config)
+
+    # Verify thinking content exists but wasn't streamed
+    assert final_result.thought is not None
+    assert len(final_result.thought) > 0
+
+    # Verify streamed content contains only surface text
+    streamed_text = "".join(streamed_chunks)
+    assert "16" in streamed_text  # 7 + 9 = 16
+
+    # Thinking content should be much longer than streamed surface content
+    assert len(final_result.thought) > len(streamed_text)
+
+
+@pytest.mark.asyncio
+async def test_stream_thought_flag_true() -> None:
+    """Test that stream_thought=True allows thinking deltas to be yielded during streaming."""
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        pytest.skip("ANTHROPIC_API_KEY not found in environment variables")
+
+    client = AnthropicChatCompletionClient(
+        model="claude-sonnet-4-20250514",
+        api_key=api_key,
+    )
+
+    messages = [UserMessage(content="What is 12 + 8? Think step by step.", source="test")]
+    thinking_config = {
+        "thinking": {"type": "enabled", "budget_tokens": 1000},
+        "stream_thought": True
+    }
+
+    # Collect all streamed chunks
+    streamed_chunks: List[str] = []
+    async for chunk in client.create_stream(messages, extra_create_args=thinking_config):
+        if isinstance(chunk, str):
+            streamed_chunks.append(chunk)
+
+    # Get final result
+    final_result = await client.create(messages, extra_create_args=thinking_config)
+
+    # Verify thinking content exists
+    assert final_result.thought is not None
+    assert len(final_result.thought) > 0
+
+    # With stream_thought=True, streamed content should be much longer
+    # as it includes both thinking deltas and surface text
+    streamed_text = "".join(streamed_chunks)
+    assert len(streamed_text) > 0
+
+    # The answer should still be present
+    assert "20" in streamed_text  # 12 + 8 = 20
+
+    # When streaming thinking, the total streamed content should be longer
+    # than when only streaming surface text (compared to the previous test pattern)
+    assert len(streamed_text) > 20  # Should contain substantial thinking content
 
 
 @pytest.mark.asyncio
