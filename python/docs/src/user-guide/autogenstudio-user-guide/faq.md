@@ -45,6 +45,9 @@ anthropic_client = AnthropicChatCompletionClient(
     )
 print(anthropic_client.dump_component().model_dump_json())
 
+# Anthropic also supports prompt caching for cost optimization
+# See the Extensions guide for detailed caching examples
+
 mistral_vllm_model = OpenAIChatCompletionClient(
         model="TheBloke/Mistral-7B-Instruct-v0.2-GGUF",
         base_url="http://localhost:1234/v1",

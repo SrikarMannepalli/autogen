@@ -86,7 +86,6 @@ LLMMessage = Annotated[
 class CacheUsage:
     """Usage information for prompt caching across providers."""
     cache_read_tokens: int = 0
-    cache_creation_input_tokens: int = 0
 
 
 @dataclass

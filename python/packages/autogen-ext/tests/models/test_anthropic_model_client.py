@@ -1254,3 +1254,237 @@ async def test_anthropic_thinking_mode_with_tools() -> None:
     # Should have thinking content even with tool calls
     assert result.thought is not None
     assert len(result.thought) > 10
+
+
+# Cache method tests
+def test_cached_system_message_creation() -> None:
+    """Test that cached_system_message creates correct AnthropicSystemMessage."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicSystemMessage, CacheControl
+
+    # Create a mock client (we only need the method, not actual API calls)
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    # Test basic cached system message
+    cached_msg = client.cached_system_message("You are a helpful assistant")
+
+    assert isinstance(cached_msg, AnthropicSystemMessage)
+    assert cached_msg.content == "You are a helpful assistant"
+    assert cached_msg.cache_control is not None
+    assert cached_msg.cache_control.type == "ephemeral"
+
+
+def test_cached_system_message_with_policy() -> None:
+    """Test cached_system_message with custom policy."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicSystemMessage
+
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    # Test with custom policy
+    cached_msg = client.cached_system_message("You are a helpful assistant", policy="persistent")
+
+    assert isinstance(cached_msg, AnthropicSystemMessage)
+    assert cached_msg.cache_control.type == "persistent"
+
+
+def test_cached_user_message_creation() -> None:
+    """Test that cached_user_message creates correct AnthropicUserMessage."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicUserMessage
+
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    # Test basic cached user message
+    cached_msg = client.cached_user_message("Hello world", source="user")
+
+    assert isinstance(cached_msg, AnthropicUserMessage)
+    assert cached_msg.content == "Hello world"
+    assert cached_msg.source == "user"
+    assert cached_msg.cache_control is not None
+    assert cached_msg.cache_control.type == "ephemeral"
+
+
+def test_cached_user_message_multipart_content() -> None:
+    """Test cached_user_message with multipart content."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicUserMessage
+    from autogen_core import Image
+
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    # Create a simple test image
+    test_image = Image.from_base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==")
+
+    # Test with multipart content
+    multipart_content = ["Hello", test_image, "What do you see?"]
+    cached_msg = client.cached_user_message(multipart_content, source="user", policy="persistent")
+
+    assert isinstance(cached_msg, AnthropicUserMessage)
+    assert cached_msg.content == multipart_content
+    assert cached_msg.cache_control.type == "persistent"
+
+
+def test_cached_tool_results_basic() -> None:
+    """Test basic cached_tool_results functionality."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicFunctionExecutionResultMessage
+
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    # Create test tool results
+    tool_results = [
+        FunctionExecutionResult(content="Result 1", name="tool1", call_id="call_1"),
+        FunctionExecutionResult(content="Result 2", name="tool2", call_id="call_2"),
+        FunctionExecutionResult(content="Result 3", name="tool3", call_id="call_3"),
+    ]
+
+    # Test with specific indices
+    cached_msg = client.cached_tool_results(content=tool_results, cached_indices=[0, 2])
+
+    assert isinstance(cached_msg, AnthropicFunctionExecutionResultMessage)
+    assert len(cached_msg.content) == 3
+    assert cached_msg.cache_control_config is not None
+    assert 0 in cached_msg.cache_control_config
+    assert 2 in cached_msg.cache_control_config
+    assert 1 not in cached_msg.cache_control_config
+
+
+def test_cached_tool_results_cache_all() -> None:
+    """Test cached_tool_results with cache_all=True."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicFunctionExecutionResultMessage
+
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    tool_results = [
+        FunctionExecutionResult(content="Result 1", name="tool1", call_id="call_1"),
+        FunctionExecutionResult(content="Result 2", name="tool2", call_id="call_2"),
+    ]
+
+    # Test cache_all=True
+    cached_msg = client.cached_tool_results(content=tool_results, cache_all=True)
+
+    assert isinstance(cached_msg, AnthropicFunctionExecutionResultMessage)
+    assert cached_msg.cache_control_config is not None
+    assert len(cached_msg.cache_control_config) == 2
+    assert 0 in cached_msg.cache_control_config
+    assert 1 in cached_msg.cache_control_config
+
+
+def test_cached_tool_results_validation() -> None:
+    """Test validation in cached_tool_results."""
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    tool_results = [
+        FunctionExecutionResult(content="Result 1", name="tool1", call_id="call_1"),
+    ]
+
+    # Test invalid indices
+    with pytest.raises(ValueError, match="Cache index 5 out of range"):
+        client.cached_tool_results(content=tool_results, cached_indices=[5])
+
+    with pytest.raises(ValueError, match="Cache index -1 out of range"):
+        client.cached_tool_results(content=tool_results, cached_indices=[-1])
+
+
+def test_cached_tool_results_empty_indices() -> None:
+    """Test cached_tool_results with no cached indices."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicFunctionExecutionResultMessage
+
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
+
+    tool_results = [
+        FunctionExecutionResult(content="Result 1", name="tool1", call_id="call_1"),
+    ]
+
+    # Test with no cached indices
+    cached_msg = client.cached_tool_results(content=tool_results)
+
+    assert isinstance(cached_msg, AnthropicFunctionExecutionResultMessage)
+    assert cached_msg.cache_control_config == {}
+
+
+@pytest.mark.asyncio
+async def test_cached_messages_integration() -> None:
+    """Integration test using cached messages with mocked API responses."""
+    from autogen_ext.models.anthropic._cache_control import (
+        AnthropicSystemMessage,
+        AnthropicUserMessage,
+        AnthropicFunctionExecutionResultMessage
+    )
+
+    # Create client with API key to avoid authentication errors
+    client = AnthropicChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        api_key="test-api-key"
+    )
+
+    # Mock the client's _client.messages.create method directly
+    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+        # Mock response with cache usage
+        from anthropic.types import TextBlock
+        mock_response = MagicMock()
+        mock_text_block = TextBlock(type="text", text="Test response")
+        mock_response.content = [mock_text_block]
+        mock_response.stop_reason = "end_turn"
+        mock_response.usage = MagicMock()
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 50
+        mock_response.usage.cache_read_input_tokens = 25
+
+        mock_create.return_value = mock_response
+
+        # Create cached messages
+        system_msg = client.cached_system_message("You are a helpful assistant")
+        user_msg = client.cached_user_message("Hello world", source="user")
+
+        # Verify the types
+        assert isinstance(system_msg, AnthropicSystemMessage)
+        assert isinstance(user_msg, AnthropicUserMessage)
+
+        # Test that they work with the client
+        result = await client.create([system_msg, user_msg])
+
+        # Verify the result
+        assert isinstance(result, CreateResult)
+        assert result.content == "Test response"
+        assert result.usage.cache_usage is not None
+        assert result.usage.cache_usage.cache_read_tokens == 25
+        assert result.cached is True
+
+
+@pytest.mark.asyncio
+async def test_mixed_cached_and_regular_messages() -> None:
+    """Test mixing cached and regular messages in the same conversation."""
+    from autogen_ext.models.anthropic._cache_control import AnthropicSystemMessage, AnthropicUserMessage
+
+    # Create client with API key to avoid authentication errors
+    client = AnthropicChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        api_key="test-api-key"
+    )
+
+    # Mock the client's _client.messages.create method directly
+    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+        # Mock response
+        from anthropic.types import TextBlock
+        mock_response = MagicMock()
+        mock_text_block = TextBlock(type="text", text="Mixed response")
+        mock_response.content = [mock_text_block]
+        mock_response.stop_reason = "end_turn"
+        mock_response.usage = MagicMock()
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 50
+        mock_response.usage.cache_read_input_tokens = 0
+
+        mock_create.return_value = mock_response
+
+        # Mix cached and regular messages
+        cached_system = client.cached_system_message("You are helpful")
+        regular_user = UserMessage(content="Hello", source="user")
+        cached_user = client.cached_user_message("Large context here", source="user")
+
+        # Verify types
+        assert isinstance(cached_system, AnthropicSystemMessage)
+        assert isinstance(regular_user, UserMessage)
+        assert isinstance(cached_user, AnthropicUserMessage)
+
+        # Test the mixed conversation
+        result = await client.create([cached_system, regular_user, cached_user])
+
+        assert result.content == "Mixed response"
