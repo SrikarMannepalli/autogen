@@ -1239,6 +1239,94 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
     def model_info(self) -> ModelInfo:
         return self._model_info
 
+    # Cache helper methods for convenient Anthropic-specific caching
+    def cached_system_message(self, content: str, policy: str = "ephemeral") -> "AnthropicSystemMessage":
+        """Create a cached system message with Anthropic-specific cache control.
+
+        Args:
+            content: The system message content
+            policy: Cache policy type (default: "ephemeral")
+
+        Returns:
+            AnthropicSystemMessage with cache control enabled
+        """
+        from ._cache_control import AnthropicSystemMessage, CacheControl
+        return AnthropicSystemMessage(
+            content=content,
+            cache_control=CacheControl(type=policy)
+        )
+
+    def cached_user_message(
+        self,
+        content: Union[str, List[Union[str, Image]]],
+        source: str,
+        policy: str = "ephemeral"
+    ) -> "AnthropicUserMessage":
+        """Create a cached user message with Anthropic-specific cache control.
+
+        Args:
+            content: The user message content (string or list of content parts)
+            source: The name of the agent that sent this message
+            policy: Cache policy type (default: "ephemeral")
+
+        Returns:
+            AnthropicUserMessage with cache control enabled
+
+        Note:
+            For multipart content (list), only the LAST text block will be cached.
+            Images and earlier text blocks are not cached. For granular control
+            over which parts to cache, use AnthropicUserMessage directly.
+
+        Example:
+            # String content - entire message is cached
+            cached_msg = client.cached_user_message("Large document...", source="user")
+
+            # Multipart content - only "question?" is cached, not the large_doc
+            content = ["intro", large_doc, "question?"]
+            cached_msg = client.cached_user_message(content, source="user")
+        """
+        from ._cache_control import AnthropicUserMessage, CacheControl
+        return AnthropicUserMessage(
+            content=content,
+            source=source,
+            cache_control=CacheControl(type=policy)
+        )
+
+    def cached_tool_results(
+        self,
+        content: List[FunctionExecutionResult],
+        cached_indices: Optional[List[int]] = None,
+        cache_all: bool = False,
+        policy: str = "ephemeral"
+    ) -> "AnthropicFunctionExecutionResultMessage":
+        """Create cached tool results with selective caching control.
+
+        Args:
+            content: List of function execution results
+            cached_indices: Specific result indices to cache (0-based)
+            cache_all: If True, cache all results (overrides cached_indices)
+            policy: Cache policy type (default: "ephemeral")
+
+        Returns:
+            AnthropicFunctionExecutionResultMessage with cache control for specified results
+        """
+        from ._cache_control import AnthropicFunctionExecutionResultMessage
+
+        if cache_all:
+            cached_indices = list(range(len(content)))
+        elif cached_indices is None:
+            cached_indices = []
+
+        # Validate indices
+        for idx in cached_indices:
+            if idx < 0 or idx >= len(content):
+                raise ValueError(f"Cache index {idx} out of range for {len(content)} results")
+
+        return AnthropicFunctionExecutionResultMessage.create_with_cache_control(
+            content=content,
+            cached_result_indices=cached_indices
+        )
+
 
 class AnthropicChatCompletionClient(
     BaseAnthropicChatCompletionClient, Component[AnthropicClientConfigurationConfigModel]
@@ -1350,94 +1438,6 @@ class AnthropicChatCompletionClient(
             copied_config["api_key"] = config.api_key.get_secret_value()
 
         return cls(**copied_config)
-
-    # Cache helper methods for convenient Anthropic-specific caching
-    def cached_system_message(self, content: str, policy: str = "ephemeral") -> "AnthropicSystemMessage":
-        """Create a cached system message with Anthropic-specific cache control.
-
-        Args:
-            content: The system message content
-            policy: Cache policy type (default: "ephemeral")
-
-        Returns:
-            AnthropicSystemMessage with cache control enabled
-        """
-        from ._cache_control import AnthropicSystemMessage, CacheControl
-        return AnthropicSystemMessage(
-            content=content,
-            cache_control=CacheControl(type=policy)
-        )
-
-    def cached_user_message(
-        self,
-        content: Union[str, List[Union[str, Image]]],
-        source: str,
-        policy: str = "ephemeral"
-    ) -> "AnthropicUserMessage":
-        """Create a cached user message with Anthropic-specific cache control.
-
-        Args:
-            content: The user message content (string or list of content parts)
-            source: The name of the agent that sent this message
-            policy: Cache policy type (default: "ephemeral")
-
-        Returns:
-            AnthropicUserMessage with cache control enabled
-
-        Note:
-            For multipart content (list), only the LAST text block will be cached.
-            Images and earlier text blocks are not cached. For granular control
-            over which parts to cache, use AnthropicUserMessage directly.
-
-        Example:
-            # String content - entire message is cached
-            cached_msg = client.cached_user_message("Large document...", source="user")
-
-            # Multipart content - only "question?" is cached, not the large_doc
-            content = ["intro", large_doc, "question?"]
-            cached_msg = client.cached_user_message(content, source="user")
-        """
-        from ._cache_control import AnthropicUserMessage, CacheControl
-        return AnthropicUserMessage(
-            content=content,
-            source=source,
-            cache_control=CacheControl(type=policy)
-        )
-
-    def cached_tool_results(
-        self,
-        content: List[FunctionExecutionResult],
-        cached_indices: Optional[List[int]] = None,
-        cache_all: bool = False,
-        policy: str = "ephemeral"
-    ) -> "AnthropicFunctionExecutionResultMessage":
-        """Create cached tool results with selective caching control.
-
-        Args:
-            content: List of function execution results
-            cached_indices: Specific result indices to cache (0-based)
-            cache_all: If True, cache all results (overrides cached_indices)
-            policy: Cache policy type (default: "ephemeral")
-
-        Returns:
-            AnthropicFunctionExecutionResultMessage with cache control for specified results
-        """
-        from ._cache_control import AnthropicFunctionExecutionResultMessage
-
-        if cache_all:
-            cached_indices = list(range(len(content)))
-        elif cached_indices is None:
-            cached_indices = []
-
-        # Validate indices
-        for idx in cached_indices:
-            if idx < 0 or idx >= len(content):
-                raise ValueError(f"Cache index {idx} out of range for {len(content)} results")
-
-        return AnthropicFunctionExecutionResultMessage.create_with_cache_control(
-            content=content,
-            cached_result_indices=cached_indices
-        )
 
 
 class AnthropicBedrockChatCompletionClient(
