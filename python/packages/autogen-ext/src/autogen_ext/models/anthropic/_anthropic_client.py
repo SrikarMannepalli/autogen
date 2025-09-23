@@ -55,7 +55,7 @@ from autogen_core.models import (
     FunctionExecutionResult,
     FunctionExecutionResultMessage,
     LLMMessage,
-    ModelCapabilities, # type: ignore
+    ModelCapabilities,  # type: ignore
     ModelInfo,
     RequestUsage,
     SystemMessage,
@@ -68,6 +68,11 @@ from pydantic import BaseModel, SecretStr
 from typing_extensions import Self, Unpack
 
 from . import _model_info
+from ._cache_control import (
+    AnthropicFunctionExecutionResultMessage,
+    AnthropicSystemMessage,
+    AnthropicUserMessage,
+)
 from .config import (
     AnthropicBedrockClientConfiguration,
     AnthropicBedrockClientConfigurationConfigModel,
@@ -202,18 +207,14 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
     assert_valid_name(message.source)
 
     # Apply cache_control if message has it (from AnthropicUserMessage)
-    cache_control = getattr(message, 'cache_control', None)
+    cache_control = getattr(message, "cache_control", None)
 
     if isinstance(message.content, str):
         content = __empty_content_to_whitespace(message.content)
         if cache_control:
             return {
                 "role": "user",
-                "content": [{
-                    "type": "text",
-                    "text": content,
-                    "cache_control": {"type": cache_control.type}
-                }],
+                "content": [{"type": "text", "text": content, "cache_control": {"type": cache_control.type}}],
             }
         else:
             return {
@@ -255,15 +256,11 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
 
 def system_message_to_anthropic(message: SystemMessage) -> Union[str, List[Dict[str, Any]]]:
     content = __empty_content_to_whitespace(message.content)
-    
+
     # Apply cache_control if message has it (from AnthropicSystemMessage)
-    cache_control = getattr(message, 'cache_control', None)
+    cache_control = getattr(message, "cache_control", None)
     if cache_control:
-        return [{
-            "type": "text",
-            "text": content,
-            "cache_control": {"type": cache_control.type}
-        }]
+        return [{"type": "text", "text": content, "cache_control": {"type": cache_control.type}}]
     else:
         return content
 
@@ -328,13 +325,13 @@ def tool_message_to_anthropic(message: FunctionExecutionResultMessage) -> List[M
             tool_use_id=result.call_id,
             content=result.content,
         )
-        
+
         # Apply cache control if message has it (from AnthropicFunctionExecutionResultMessage)
-        cache_control_config = getattr(message, 'cache_control_config', {})
+        cache_control_config = getattr(message, "cache_control_config", {})
         if idx in cache_control_config:
             cache_control = cache_control_config[idx]
             tool_result_block["cache_control"] = {"type": cache_control.type}
-            
+
         content_blocks.append(tool_result_block)
 
     return [
@@ -723,20 +720,17 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
 
         # Extract usage statistics
         cache_usage = None
-        cache_read_tokens = getattr(result.usage, 'cache_read_input_tokens', 0) or 0
-        cache_write_tokens = getattr(result.usage, 'cache_creation_input_tokens', 0) or 0
+        cache_read_tokens = getattr(result.usage, "cache_read_input_tokens", 0) or 0
+        cache_write_tokens = getattr(result.usage, "cache_creation_input_tokens", 0) or 0
         if cache_read_tokens > 0 or cache_write_tokens > 0:
-            cache_usage = CacheUsage(
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=cache_write_tokens
-            )
-        
+            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens, cache_write_tokens=cache_write_tokens)
+
         usage = RequestUsage(
             prompt_tokens=result.usage.input_tokens,
             completion_tokens=result.usage.output_tokens,
             cache_usage=cache_usage,
         )
-        
+
         # Check if caching was used (for backward compatibility)
         cached = cache_usage is not None
         serializable_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
@@ -1040,26 +1034,23 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                         input_tokens = chunk.message.usage.input_tokens
                     if hasattr(chunk.message.usage, "output_tokens"):
                         output_tokens = chunk.message.usage.output_tokens
-                    
+
                     # Extract cache tokens
                     usage_obj = chunk.message.usage
-                    cache_read_tokens = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
-                    cache_write_tokens = getattr(usage_obj, 'cache_creation_input_tokens', 0) or 0
+                    cache_read_tokens = getattr(usage_obj, "cache_read_input_tokens", 0) or 0
+                    cache_write_tokens = getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
 
         # Prepare the final response
         cache_usage = None
         if cache_read_tokens > 0 or cache_write_tokens > 0:
-            cache_usage = CacheUsage(
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=cache_write_tokens
-            )
-            
+            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens, cache_write_tokens=cache_write_tokens)
+
         usage = RequestUsage(
             prompt_tokens=input_tokens,
             completion_tokens=output_tokens,
             cache_usage=cache_usage,
         )
-        
+
         # Check if caching was used (for backward compatibility)
         cached = cache_usage is not None
 
@@ -1259,16 +1250,11 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             AnthropicSystemMessage with cache control enabled
         """
         from ._cache_control import AnthropicSystemMessage, CacheControl
-        return AnthropicSystemMessage(
-            content=content,
-            cache_control=CacheControl(type=policy)
-        )
+
+        return AnthropicSystemMessage(content=content, cache_control=CacheControl(type=policy))
 
     def cached_user_message(
-        self,
-        content: Union[str, List[Union[str, Image]]],
-        source: str,
-        policy: str = "ephemeral"
+        self, content: Union[str, List[Union[str, Image]]], source: str, policy: str = "ephemeral"
     ) -> "AnthropicUserMessage":
         """Create a cached user message with Anthropic-specific cache control.
 
@@ -1294,18 +1280,15 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             cached_msg = client.cached_user_message(content, source="user")
         """
         from ._cache_control import AnthropicUserMessage, CacheControl
-        return AnthropicUserMessage(
-            content=content,
-            source=source,
-            cache_control=CacheControl(type=policy)
-        )
+
+        return AnthropicUserMessage(content=content, source=source, cache_control=CacheControl(type=policy))
 
     def cached_tool_results(
         self,
         content: List[FunctionExecutionResult],
         cached_indices: Optional[List[int]] = None,
         cache_all: bool = False,
-        policy: str = "ephemeral"
+        policy: str = "ephemeral",
     ) -> "AnthropicFunctionExecutionResultMessage":
         """Create cached tool results with selective caching control.
 
@@ -1331,8 +1314,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                 raise ValueError(f"Cache index {idx} out of range for {len(content)} results")
 
         return AnthropicFunctionExecutionResultMessage.create_with_cache_control(
-            content=content,
-            cached_result_indices=cached_indices
+            content=content, cached_result_indices=cached_indices
         )
 
 

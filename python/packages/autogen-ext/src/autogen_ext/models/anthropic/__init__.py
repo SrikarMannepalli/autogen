@@ -4,11 +4,11 @@ from ._anthropic_client import (
     BaseAnthropicChatCompletionClient,
 )
 from ._cache_control import (
-    CacheControl,
-    create_ephemeral_cache,
+    AnthropicFunctionExecutionResultMessage,
     AnthropicSystemMessage,
     AnthropicUserMessage,
-    AnthropicFunctionExecutionResultMessage,
+    CacheControl,
+    create_ephemeral_cache,
 )
 from .config import (
     AnthropicBedrockClientConfiguration,
@@ -31,4 +31,7 @@ __all__ = [
     "BedrockInfo",
     "CacheControl",
     "create_ephemeral_cache",
+    "AnthropicFunctionExecutionResultMessage",
+    "AnthropicSystemMessage",
+    "AnthropicUserMessage",
 ]

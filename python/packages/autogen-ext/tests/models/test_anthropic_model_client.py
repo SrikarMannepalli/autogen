@@ -1224,6 +1224,9 @@ async def test_thinking_mode_streaming_yields_only_surface_text() -> None:
     thinking_indicators = ["think", "reasoning", "step by step", "let me", "first"]
     thinking_found_in_stream = any(indicator in streamed_text.lower() for indicator in thinking_indicators)
 
+    # Thinking content should not leak into the stream
+    assert not thinking_found_in_stream, "Thinking content was found in streamed output"
+
     # The final surface answer should be present in streamed text
     assert "8" in streamed_text  # 5 + 3 = 8
 
@@ -1244,10 +1247,7 @@ async def test_stream_thought_flag_false() -> None:
     )
 
     messages = [UserMessage(content="What is 7 + 9? Think step by step.", source="test")]
-    thinking_config = {
-        "thinking": {"type": "enabled", "budget_tokens": 1000},
-        "stream_thought": False
-    }
+    thinking_config = {"thinking": {"type": "enabled", "budget_tokens": 1000}, "stream_thought": False}
 
     # Collect all streamed chunks
     streamed_chunks: List[str] = []
@@ -1283,10 +1283,7 @@ async def test_stream_thought_flag_true() -> None:
     )
 
     messages = [UserMessage(content="What is 12 + 8? Think step by step.", source="test")]
-    thinking_config = {
-        "thinking": {"type": "enabled", "budget_tokens": 1000},
-        "stream_thought": True
-    }
+    thinking_config = {"thinking": {"type": "enabled", "budget_tokens": 1000}, "stream_thought": True}
 
     # Collect all streamed chunks
     streamed_chunks: List[str] = []
@@ -1384,7 +1381,7 @@ async def test_anthropic_thinking_mode_with_tools() -> None:
 # Cache method tests
 def test_cached_system_message_creation() -> None:
     """Test that cached_system_message creates correct AnthropicSystemMessage."""
-    from autogen_ext.models.anthropic._cache_control import AnthropicSystemMessage, CacheControl
+    from autogen_ext.models.anthropic._cache_control import AnthropicSystemMessage
 
     # Create a mock client (we only need the method, not actual API calls)
     client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
@@ -1408,6 +1405,7 @@ def test_cached_system_message_with_policy() -> None:
     cached_msg = client.cached_system_message("You are a helpful assistant", policy="persistent")
 
     assert isinstance(cached_msg, AnthropicSystemMessage)
+    assert cached_msg.cache_control is not None
     assert cached_msg.cache_control.type == "persistent"
 
 
@@ -1429,13 +1427,15 @@ def test_cached_user_message_creation() -> None:
 
 def test_cached_user_message_multipart_content() -> None:
     """Test cached_user_message with multipart content."""
-    from autogen_ext.models.anthropic._cache_control import AnthropicUserMessage
     from autogen_core import Image
+    from autogen_ext.models.anthropic._cache_control import AnthropicUserMessage
 
     client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229")
 
     # Create a simple test image
-    test_image = Image.from_base64("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==")
+    test_image = Image.from_base64(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+    )
 
     # Test with multipart content
     multipart_content = ["Hello", test_image, "What do you see?"]
@@ -1443,6 +1443,7 @@ def test_cached_user_message_multipart_content() -> None:
 
     assert isinstance(cached_msg, AnthropicUserMessage)
     assert cached_msg.content == multipart_content
+    assert cached_msg.cache_control is not None
     assert cached_msg.cache_control.type == "persistent"
 
 
@@ -1530,19 +1531,16 @@ async def test_cached_messages_integration() -> None:
     from autogen_ext.models.anthropic._cache_control import (
         AnthropicSystemMessage,
         AnthropicUserMessage,
-        AnthropicFunctionExecutionResultMessage
     )
 
     # Create client with API key to avoid authentication errors
-    client = AnthropicChatCompletionClient(
-        model="claude-3-sonnet-20240229",
-        api_key="test-api-key"
-    )
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229", api_key="test-api-key")
 
     # Mock the client's _client.messages.create method directly
-    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+    with patch.object(client._client.messages, "create", new_callable=AsyncMock) as mock_create:  # type: ignore[attr-defined]
         # Mock response with cache usage
         from anthropic.types import TextBlock
+
         mock_response = MagicMock()
         mock_text_block = TextBlock(type="text", text="Test response")
         mock_response.content = [mock_text_block]
@@ -1581,15 +1579,13 @@ async def test_mixed_cached_and_regular_messages() -> None:
     from autogen_ext.models.anthropic._cache_control import AnthropicSystemMessage, AnthropicUserMessage
 
     # Create client with API key to avoid authentication errors
-    client = AnthropicChatCompletionClient(
-        model="claude-3-sonnet-20240229",
-        api_key="test-api-key"
-    )
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229", api_key="test-api-key")
 
     # Mock the client's _client.messages.create method directly
-    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+    with patch.object(client._client.messages, "create", new_callable=AsyncMock) as mock_create:  # type: ignore[attr-defined]
         # Mock response
         from anthropic.types import TextBlock
+
         mock_response = MagicMock()
         mock_text_block = TextBlock(type="text", text="Mixed response")
         mock_response.content = [mock_text_block]
@@ -1622,15 +1618,13 @@ async def test_mixed_cached_and_regular_messages() -> None:
 async def test_cache_write_tokens_tracking() -> None:
     """Test that cache_creation_input_tokens are properly tracked as cache_write_tokens."""
     # Create client with API key to avoid authentication errors
-    client = AnthropicChatCompletionClient(
-        model="claude-3-sonnet-20240229",
-        api_key="test-api-key"
-    )
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229", api_key="test-api-key")
 
     # Mock the client's _client.messages.create method directly
-    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+    with patch.object(client._client.messages, "create", new_callable=AsyncMock) as mock_create:  # type: ignore[attr-defined]
         # Mock response with cache creation (write) tokens
         from anthropic.types import TextBlock
+
         mock_response = MagicMock()
         mock_text_block = TextBlock(type="text", text="Response with cache creation")
         mock_response.content = [mock_text_block]
@@ -1661,13 +1655,10 @@ async def test_cache_write_tokens_tracking() -> None:
 async def test_streaming_cache_write_tokens_tracking() -> None:
     """Test that cache_creation_input_tokens are properly tracked in streaming responses."""
     # Create client with API key to avoid authentication errors
-    client = AnthropicChatCompletionClient(
-        model="claude-3-sonnet-20240229",
-        api_key="test-api-key"
-    )
+    client = AnthropicChatCompletionClient(model="claude-3-sonnet-20240229", api_key="test-api-key")
 
     # Mock the client's _client.messages.create method for streaming
-    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+    with patch.object(client._client.messages, "create", new_callable=AsyncMock) as mock_create:  # type: ignore[attr-defined]
         # Create a mock stream with cache creation tokens
         mock_stream = AsyncMock()
 
@@ -1707,7 +1698,7 @@ async def test_streaming_cache_write_tokens_tracking() -> None:
             message_start_chunk,
             content_start_chunk,
             content_delta_chunk,
-            message_delta_chunk
+            message_delta_chunk,
         ]
 
         mock_create.return_value = mock_stream
@@ -1717,7 +1708,7 @@ async def test_streaming_cache_write_tokens_tracking() -> None:
         user_msg = UserMessage(content="Hello streaming", source="user")
 
         # Test streaming with cache creation
-        chunks = []
+        chunks: List[str | CreateResult] = []
         async for chunk in client.create_stream([cached_msg, user_msg]):
             chunks.append(chunk)
 

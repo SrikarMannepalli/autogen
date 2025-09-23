@@ -7,8 +7,9 @@ client.cached_system_message() without needing to know about provider-specific m
 """
 
 import asyncio
-from typing import List
-from autogen_core.models import SystemMessage, UserMessage, FunctionExecutionResult, FunctionExecutionResultMessage
+
+from autogen_core.models import FunctionExecutionResult, SystemMessage, UserMessage
+
 from autogen_ext.models.anthropic import AnthropicChatCompletionClient
 
 
@@ -37,19 +38,20 @@ async def example_user_message_caching():
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
 
     # Simulate a large context that we want to cache
-    large_context = """
+    large_context = (
+        """
     # Large Documentation or Code Context
     # This could be a comprehensive API documentation, large codebase, or dataset
     # that we want to cache to avoid re-processing in subsequent requests
-    """ + "# " + "\n# ".join([f"Line {i} of documentation..." for i in range(100)])
+    """
+        + "# "
+        + "\n# ".join([f"Line {i} of documentation..." for i in range(100)])
+    )
 
     system_msg = SystemMessage(content="You are a documentation assistant.")
 
     # Create cached user message using the client method
-    context_msg = client.cached_user_message(
-        content=large_context,
-        source="user"
-    )
+    context_msg = client.cached_user_message(content=large_context, source="user")
 
     # Regular follow-up query (no caching)
     query_msg = UserMessage(content="Based on the provided context, what are the key concepts?", source="user")
@@ -67,21 +69,13 @@ async def example_tool_result_caching():
 
     # Simulate tool execution results - some expensive, some not
     tool_results = [
-        FunctionExecutionResult(
-            content="Quick calculation result: 42",
-            name="simple_calc",
-            call_id="call_1"
-        ),
+        FunctionExecutionResult(content="Quick calculation result: 42", name="simple_calc", call_id="call_1"),
         FunctionExecutionResult(
             content="Expensive database query result: [large dataset with 10000 rows...]",
             name="database_query",
-            call_id="call_2"
+            call_id="call_2",
         ),
-        FunctionExecutionResult(
-            content="Simple string operation: 'hello world'",
-            name="string_op",
-            call_id="call_3"
-        )
+        FunctionExecutionResult(content="Simple string operation: 'hello world'", name="string_op", call_id="call_3"),
     ]
 
     system_msg = SystemMessage(content="You are an assistant with access to various tools.")
@@ -90,7 +84,7 @@ async def example_tool_result_caching():
     # Create cached tool results using the client method
     tool_msg = client.cached_tool_results(
         content=tool_results,
-        cached_indices=[1]  # Cache only the expensive database query result (index 1)
+        cached_indices=[1],  # Cache only the expensive database query result (index 1)
     )
 
     messages = [system_msg, user_msg, tool_msg]
@@ -114,13 +108,13 @@ async def example_granular_tool_caching():
     # Cache results at index 1 and 3 (the expensive ones) using the client method
     tool_msg = client.cached_tool_results(
         content=tool_results,
-        cached_indices=[1, 3]  # Cache the expensive results
+        cached_indices=[1, 3],  # Cache the expensive results
     )
 
     messages = [
         SystemMessage(content="Process these tool results."),
         UserMessage(content="Analyze the results.", source="user"),
-        tool_msg
+        tool_msg,
     ]
 
     response = await client.create(messages=messages)
@@ -143,14 +137,12 @@ async def example_combined_caching():
 
     # Create cached large codebase context
     codebase_context = client.cached_user_message(
-        content="[Large codebase context - thousands of lines of code...]",
-        source="user"
+        content="[Large codebase context - thousands of lines of code...]", source="user"
     )
 
     # Regular query without caching
     query_msg = UserMessage(
-        content="What are potential performance issues in the user authentication module?",
-        source="user"
+        content="What are potential performance issues in the user authentication module?", source="user"
     )
 
     messages = [system_msg, codebase_context, query_msg]
@@ -167,18 +159,12 @@ async def example_mixed_message_types():
     messages = [
         # Cached system message using client method
         client.cached_system_message("You are a helpful coding assistant."),
-
         # Regular user message (no caching)
         UserMessage(content="I have some code to review.", source="user"),
-
         # Cached user message with large context using client method
-        client.cached_user_message(
-            content="[Large code snippet to cache...]",
-            source="user"
-        ),
-
+        client.cached_user_message(content="[Large code snippet to cache...]", source="user"),
         # Regular follow-up query
-        UserMessage(content="What can be improved?", source="user")
+        UserMessage(content="What can be improved?", source="user"),
     ]
 
     response = await client.create(messages=messages)
@@ -198,15 +184,12 @@ async def example_cache_all_tool_results():
     ]
 
     # Cache all results using cache_all=True
-    tool_msg = client.cached_tool_results(
-        content=expensive_results,
-        cache_all=True
-    )
+    tool_msg = client.cached_tool_results(content=expensive_results, cache_all=True)
 
     messages = [
         SystemMessage(content="Process these expensive tool results."),
         UserMessage(content="Analyze all the data.", source="user"),
-        tool_msg
+        tool_msg,
     ]
 
     response = await client.create(messages=messages)
@@ -221,13 +204,11 @@ async def example_custom_cache_policy():
     # Create cached messages with custom policies
     system_msg = client.cached_system_message(
         "You are a persistent assistant for long-running tasks.",
-        policy="persistent"  # Custom policy instead of default "ephemeral"
+        policy="persistent",  # Custom policy instead of default "ephemeral"
     )
 
     user_msg = client.cached_user_message(
-        content="[Large persistent context that should be cached longer...]",
-        source="user",
-        policy="persistent"
+        content="[Large persistent context that should be cached longer...]", source="user", policy="persistent"
     )
 
     messages = [system_msg, user_msg]
@@ -242,31 +223,31 @@ async def main():
 
     print("1. System Message Caching:")
     await example_system_message_caching()
-    print("\n" + "="*50 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     print("2. User Message Caching:")
     await example_user_message_caching()
-    print("\n" + "="*50 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     print("3. Tool Result Caching:")
     await example_tool_result_caching()
-    print("\n" + "="*50 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     print("4. Granular Tool Caching:")
     await example_granular_tool_caching()
-    print("\n" + "="*50 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     print("5. Combined Caching:")
     await example_combined_caching()
-    print("\n" + "="*50 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     print("6. Mixed Message Types:")
     await example_mixed_message_types()
-    print("\n" + "="*50 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     print("7. Cache All Tool Results:")
     await example_cache_all_tool_results()
-    print("\n" + "="*50 + "\n")
+    print("\n" + "=" * 50 + "\n")
 
     print("8. Custom Cache Policy:")
     await example_custom_cache_policy()

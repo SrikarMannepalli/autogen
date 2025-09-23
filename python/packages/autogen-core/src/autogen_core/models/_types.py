@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated
@@ -85,6 +85,7 @@ LLMMessage = Annotated[
 @dataclass
 class CacheUsage:
     """Usage information for prompt caching across providers."""
+
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
 
