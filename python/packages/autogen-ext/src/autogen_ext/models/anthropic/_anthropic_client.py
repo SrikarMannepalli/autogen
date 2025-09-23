@@ -724,9 +724,11 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         # Extract usage statistics
         cache_usage = None
         cache_read_tokens = getattr(result.usage, 'cache_read_input_tokens', 0) or 0
-        if cache_read_tokens > 0:
+        cache_write_tokens = getattr(result.usage, 'cache_creation_input_tokens', 0) or 0
+        if cache_read_tokens > 0 or cache_write_tokens > 0:
             cache_usage = CacheUsage(
-                cache_read_tokens=cache_read_tokens
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens
             )
         
         usage = RequestUsage(
@@ -1044,9 +1046,11 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
 
         # Prepare the final response
         cache_usage = None
-        if cache_read_tokens > 0:
+        cache_write_tokens = 0  # Streaming doesn't provide cache_creation_input_tokens yet
+        if cache_read_tokens > 0 or cache_write_tokens > 0:
             cache_usage = CacheUsage(
-                cache_read_tokens=cache_read_tokens
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens
             )
             
         usage = RequestUsage(

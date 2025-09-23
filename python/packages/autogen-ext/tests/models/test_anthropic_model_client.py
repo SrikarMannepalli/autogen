@@ -1551,6 +1551,7 @@ async def test_cached_messages_integration() -> None:
         mock_response.usage.input_tokens = 100
         mock_response.usage.output_tokens = 50
         mock_response.usage.cache_read_input_tokens = 25
+        mock_response.usage.cache_creation_input_tokens = 0
 
         mock_create.return_value = mock_response
 
@@ -1570,6 +1571,7 @@ async def test_cached_messages_integration() -> None:
         assert result.content == "Test response"
         assert result.usage.cache_usage is not None
         assert result.usage.cache_usage.cache_read_tokens == 25
+        assert result.usage.cache_usage.cache_write_tokens == 0  # No cache creation in this test
         assert result.cached is True
 
 
@@ -1596,6 +1598,7 @@ async def test_mixed_cached_and_regular_messages() -> None:
         mock_response.usage.input_tokens = 100
         mock_response.usage.output_tokens = 50
         mock_response.usage.cache_read_input_tokens = 0
+        mock_response.usage.cache_creation_input_tokens = 0
 
         mock_create.return_value = mock_response
 
@@ -1613,3 +1616,42 @@ async def test_mixed_cached_and_regular_messages() -> None:
         result = await client.create([cached_system, regular_user, cached_user])
 
         assert result.content == "Mixed response"
+
+
+@pytest.mark.asyncio
+async def test_cache_write_tokens_tracking() -> None:
+    """Test that cache_creation_input_tokens are properly tracked as cache_write_tokens."""
+    # Create client with API key to avoid authentication errors
+    client = AnthropicChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        api_key="test-api-key"
+    )
+
+    # Mock the client's _client.messages.create method directly
+    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+        # Mock response with cache creation (write) tokens
+        from anthropic.types import TextBlock
+        mock_response = MagicMock()
+        mock_text_block = TextBlock(type="text", text="Response with cache creation")
+        mock_response.content = [mock_text_block]
+        mock_response.stop_reason = "end_turn"
+        mock_response.usage = MagicMock()
+        mock_response.usage.input_tokens = 100
+        mock_response.usage.output_tokens = 50
+        mock_response.usage.cache_read_input_tokens = 0  # No cache read
+        mock_response.usage.cache_creation_input_tokens = 75  # Cache write tokens
+
+        mock_create.return_value = mock_response
+
+        # Create a cached message that would trigger cache creation
+        cached_msg = client.cached_system_message("Large system prompt that gets cached")
+        user_msg = UserMessage(content="Hello", source="user")
+
+        # Test the conversation
+        result = await client.create([cached_msg, user_msg])
+
+        # Verify cache write tokens are tracked
+        assert result.usage.cache_usage is not None
+        assert result.usage.cache_usage.cache_read_tokens == 0
+        assert result.usage.cache_usage.cache_write_tokens == 75
+        assert result.cached is True  # Should be True when cache_usage exists
