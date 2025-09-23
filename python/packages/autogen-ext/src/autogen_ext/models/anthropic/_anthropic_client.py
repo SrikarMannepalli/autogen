@@ -26,6 +26,7 @@ import tiktoken
 from anthropic import AsyncAnthropic, AsyncAnthropicBedrock, AsyncStream
 from anthropic.types import (
     Base64ImageSourceParam,
+    CacheControlEphemeralParam,
     ContentBlock,
     ImageBlockParam,
     Message,
@@ -48,9 +49,11 @@ from autogen_core import (
 from autogen_core.logging import LLMCallEvent, LLMStreamEndEvent, LLMStreamStartEvent
 from autogen_core.models import (
     AssistantMessage,
+    CacheUsage,
     ChatCompletionClient,
     CreateResult,
     FinishReasons,
+    FunctionExecutionResult,
     FunctionExecutionResultMessage,
     LLMMessage,
     ModelCapabilities,  # type: ignore
@@ -66,6 +69,11 @@ from pydantic import BaseModel, SecretStr
 from typing_extensions import Self, Unpack
 
 from . import _model_info
+from ._cache_control import (
+    AnthropicFunctionExecutionResultMessage,
+    AnthropicSystemMessage,
+    AnthropicUserMessage,
+)
 from .config import (
     AnthropicBedrockClientConfiguration,
     AnthropicBedrockClientConfigurationConfigModel,
@@ -199,11 +207,36 @@ def __empty_content_to_whitespace(
 def user_message_to_anthropic(message: UserMessage) -> MessageParam:
     assert_valid_name(message.source)
 
+    # Apply cache_control if message has it (from AnthropicUserMessage)
+    cache_control = getattr(message, "cache_control", None)
+
     if isinstance(message.content, str):
-        return {
-            "role": "user",
-            "content": __empty_content_to_whitespace(message.content),
-        }
+        content = __empty_content_to_whitespace(message.content)
+        if cache_control:
+            return cast(
+                MessageParam,
+                {
+                    "role": "user",
+                    "content": [
+                        cast(
+                            TextBlockParam,
+                            {
+                                "type": "text",
+                                "text": content,
+                                "cache_control": CacheControlEphemeralParam(type=cache_control.type),
+                            },
+                        )
+                    ],
+                },
+            )
+        else:
+            return cast(
+                MessageParam,
+                {
+                    "role": "user",
+                    "content": content,
+                },
+            )
     else:
         blocks: List[Union[TextBlockParam, ImageBlockParam]] = []
 
@@ -224,14 +257,46 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
             else:
                 raise ValueError(f"Unknown content type: {part}")
 
-        return {
-            "role": "user",
-            "content": blocks,
-        }
+        # Apply cache_control to the last text block if provided
+        if cache_control and blocks:
+            for i, block in enumerate(reversed(blocks)):
+                if isinstance(block, dict) and block.get("type") == "text":
+                    # Replace the last text block with a version that has cache control
+                    idx = len(blocks) - 1 - i
+                    text_content = block.get("text", "")
+                    blocks[idx] = cast(
+                        TextBlockParam,
+                        {
+                            "type": "text",
+                            "text": text_content,
+                            "cache_control": CacheControlEphemeralParam(type=cache_control.type),
+                        },
+                    )
+                    break
+
+        return cast(
+            MessageParam,
+            {
+                "role": "user",
+                "content": blocks,
+            },
+        )
 
 
-def system_message_to_anthropic(message: SystemMessage) -> str:
-    return __empty_content_to_whitespace(message.content)
+def system_message_to_anthropic(message: SystemMessage) -> Union[str, List[TextBlockParam]]:
+    content = __empty_content_to_whitespace(message.content)
+
+    # Apply cache_control if message has it (from AnthropicSystemMessage)
+    cache_control = getattr(message, "cache_control", None)
+    if cache_control:
+        return [
+            cast(
+                TextBlockParam,
+                {"type": "text", "text": content, "cache_control": CacheControlEphemeralParam(type=cache_control.type)},
+            )
+        ]
+    else:
+        return content
 
 
 def assistant_message_to_anthropic(message: AssistantMessage) -> MessageParam:
@@ -272,42 +337,62 @@ def assistant_message_to_anthropic(message: AssistantMessage) -> MessageParam:
 
         content_blocks.extend(tool_use_blocks)
 
-        return {
-            "role": "assistant",
-            "content": content_blocks,
-        }
+        return cast(
+            MessageParam,
+            {
+                "role": "assistant",
+                "content": content_blocks,
+            },
+        )
     else:
         # Simple text content
-        return {
-            "role": "assistant",
-            "content": message.content,
-        }
+        return cast(
+            MessageParam,
+            {
+                "role": "assistant",
+                "content": message.content,
+            },
+        )
 
 
 def tool_message_to_anthropic(message: FunctionExecutionResultMessage) -> List[MessageParam]:
     # Create a single user message containing all tool results
     content_blocks: List[ToolResultBlockParam] = []
 
-    for result in message.content:
-        content_blocks.append(
-            ToolResultBlockParam(
-                type="tool_result",
-                tool_use_id=result.call_id,
-                content=result.content,
-            )
+    for idx, result in enumerate(message.content):
+        tool_result_block = ToolResultBlockParam(
+            type="tool_result",
+            tool_use_id=result.call_id,
+            content=result.content,
         )
 
+        # Apply cache control if message has it (from AnthropicFunctionExecutionResultMessage)
+        cache_control_config = getattr(message, "cache_control_config", {})
+        if idx in cache_control_config:
+            cache_control = cache_control_config[idx]
+            tool_result_block["cache_control"] = CacheControlEphemeralParam(type=cache_control.type)
+
+        content_blocks.append(tool_result_block)
+
     return [
-        {
-            "role": "user",  # Changed from "tool" to "user"
-            "content": content_blocks,
-        }
+        cast(
+            MessageParam,
+            {
+                "role": "user",  # Changed from "tool" to "user"
+                "content": content_blocks,
+            },
+        )
     ]
 
 
 def to_anthropic_type(message: LLMMessage) -> Union[str, List[MessageParam], MessageParam]:
     if isinstance(message, SystemMessage):
-        return system_message_to_anthropic(message)
+        result = system_message_to_anthropic(message)
+        # System messages are handled separately, but for type compatibility
+        # we cast List[TextBlockParam] to the expected return type
+        if isinstance(result, list):
+            return cast(List[MessageParam], result)
+        return result
     elif isinstance(message, UserMessage):
         return user_message_to_anthropic(message)
     elif isinstance(message, AssistantMessage):
@@ -599,8 +684,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                 if isinstance(anthropic_message, list):
                     anthropic_messages.extend(anthropic_message)
                 elif isinstance(anthropic_message, str):
-                    msg = MessageParam(
-                        role="user" if isinstance(message, UserMessage) else "assistant", content=anthropic_message
+                    msg = cast(
+                        MessageParam,
+                        {
+                            "role": "user" if isinstance(message, UserMessage) else "assistant",
+                            "content": anthropic_message,
+                        },
                     )
                     anthropic_messages.append(msg)
                 else:
@@ -682,10 +771,20 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         result: Message = cast(Message, await future)  # type: ignore
 
         # Extract usage statistics
+        cache_usage = None
+        cache_read_tokens = getattr(result.usage, "cache_read_input_tokens", 0) or 0
+        cache_write_tokens = getattr(result.usage, "cache_creation_input_tokens", 0) or 0
+        if cache_read_tokens > 0 or cache_write_tokens > 0:
+            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens, cache_write_tokens=cache_write_tokens)
+
         usage = RequestUsage(
             prompt_tokens=result.usage.input_tokens,
             completion_tokens=result.usage.output_tokens,
+            cache_usage=cache_usage,
         )
+
+        # Check if caching was used (for backward compatibility)
+        cached = cache_usage is not None
         serializable_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
 
         logger.info(
@@ -752,7 +851,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             finish_reason=normalize_stop_reason(result.stop_reason),
             content=content,
             usage=usage,
-            cached=False,
+            cached=cached,
             thought=thought,
         )
 
@@ -817,8 +916,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                 if isinstance(anthropic_message, list):
                     anthropic_messages.extend(anthropic_message)
                 elif isinstance(anthropic_message, str):
-                    msg = MessageParam(
-                        role="user" if isinstance(message, UserMessage) else "assistant", content=anthropic_message
+                    msg = cast(
+                        MessageParam,
+                        {
+                            "role": "user" if isinstance(message, UserMessage) else "assistant",
+                            "content": anthropic_message,
+                        },
                     )
                     anthropic_messages.append(msg)
                 else:
@@ -892,6 +995,9 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         if thinking_config:
             request_args.update(thinking_config)
 
+        # Extract stream_thought flag
+        stream_thought = extra_create_args.get("stream_thought", False)
+
         # Stream the response
         stream_future: asyncio.Task[AsyncStream[RawMessageStreamEvent]] = asyncio.ensure_future(
             cast(Coroutine[Any, Any, AsyncStream[RawMessageStreamEvent]], self._client.messages.create(**request_args))
@@ -909,6 +1015,8 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         input_tokens: int = 0
         output_tokens: int = 0
         stop_reason: Optional[str] = None
+        cache_read_tokens: int = 0
+        cache_write_tokens: int = 0
 
         first_chunk = True
         serialized_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
@@ -946,12 +1054,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                     if delta_text:
                         yield delta_text
                 elif hasattr(chunk.delta, "type") and chunk.delta.type == "thinking_delta":
-                    # Handle thinking content
+                    # Handle thinking content - aggregate by default, stream if opt-in flag is set
                     if hasattr(chunk.delta, "thinking"):
                         delta_thinking = chunk.delta.thinking
                         thinking_content.append(delta_thinking)
-                        # Optionally yield thinking content as it streams
-                        if delta_thinking:
+                        # Only yield thinking content if stream_thought is enabled
+                        if stream_thought and delta_thinking:
                             yield delta_thinking
                 # Handle tool input deltas - they come as InputJSONDelta
                 elif hasattr(chunk.delta, "type") and chunk.delta.type == "input_json_delta":
@@ -983,11 +1091,24 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                     if hasattr(chunk.message.usage, "output_tokens"):
                         output_tokens = chunk.message.usage.output_tokens
 
+                    # Extract cache tokens
+                    usage_obj = chunk.message.usage
+                    cache_read_tokens = getattr(usage_obj, "cache_read_input_tokens", 0) or 0
+                    cache_write_tokens = getattr(usage_obj, "cache_creation_input_tokens", 0) or 0
+
         # Prepare the final response
+        cache_usage = None
+        if cache_read_tokens > 0 or cache_write_tokens > 0:
+            cache_usage = CacheUsage(cache_read_tokens=cache_read_tokens, cache_write_tokens=cache_write_tokens)
+
         usage = RequestUsage(
             prompt_tokens=input_tokens,
             completion_tokens=output_tokens,
+            cache_usage=cache_usage,
         )
+
+        # Check if caching was used (for backward compatibility)
+        cached = cache_usage is not None
 
         # Determine content based on what was received
         content: Union[str, List[FunctionCall]]
@@ -1038,7 +1159,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             finish_reason=normalize_stop_reason(stop_reason),
             content=content,
             usage=usage,
-            cached=False,
+            cached=cached,
             thought=thought,
         )
 
@@ -1173,12 +1294,91 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
     def model_info(self) -> ModelInfo:
         return self._model_info
 
+    # Cache helper methods for convenient Anthropic-specific caching
+    def cached_system_message(self, content: str, policy: str = "ephemeral") -> "AnthropicSystemMessage":
+        """Create a cached system message with Anthropic-specific cache control.
+
+        Args:
+            content: The system message content
+            policy: Cache policy type (default: "ephemeral")
+
+        Returns:
+            AnthropicSystemMessage with cache control enabled
+        """
+        from ._cache_control import AnthropicSystemMessage, CacheControl
+
+        return AnthropicSystemMessage(content=content, cache_control=CacheControl(type=policy))
+
+    def cached_user_message(
+        self, content: Union[str, List[Union[str, Image]]], source: str, policy: str = "ephemeral"
+    ) -> "AnthropicUserMessage":
+        """Create a cached user message with Anthropic-specific cache control.
+
+        Args:
+            content: The user message content (string or list of content parts)
+            source: The name of the agent that sent this message
+            policy: Cache policy type (default: "ephemeral")
+
+        Returns:
+            AnthropicUserMessage with cache control enabled
+
+        Note:
+            For multipart content (list), only the LAST text block will be cached.
+            Images and earlier text blocks are not cached. For granular control
+            over which parts to cache, use AnthropicUserMessage directly.
+
+        Example:
+            # String content - entire message is cached
+            cached_msg = client.cached_user_message("Large document...", source="user")
+
+            # Multipart content - only "question?" is cached, not the large_doc
+            content = ["intro", large_doc, "question?"]
+            cached_msg = client.cached_user_message(content, source="user")
+        """
+        from ._cache_control import AnthropicUserMessage, CacheControl
+
+        return AnthropicUserMessage(content=content, source=source, cache_control=CacheControl(type=policy))
+
+    def cached_tool_results(
+        self,
+        content: List[FunctionExecutionResult],
+        cached_indices: Optional[List[int]] = None,
+        cache_all: bool = False,
+        policy: str = "ephemeral",
+    ) -> "AnthropicFunctionExecutionResultMessage":
+        """Create cached tool results with selective caching control.
+
+        Args:
+            content: List of function execution results
+            cached_indices: Specific result indices to cache (0-based)
+            cache_all: If True, cache all results (overrides cached_indices)
+            policy: Cache policy type (default: "ephemeral")
+
+        Returns:
+            AnthropicFunctionExecutionResultMessage with cache control for specified results
+        """
+        from ._cache_control import AnthropicFunctionExecutionResultMessage
+
+        if cache_all:
+            cached_indices = list(range(len(content)))
+        elif cached_indices is None:
+            cached_indices = []
+
+        # Validate indices
+        for idx in cached_indices:
+            if idx < 0 or idx >= len(content):
+                raise ValueError(f"Cache index {idx} out of range for {len(content)} results")
+
+        return AnthropicFunctionExecutionResultMessage.create_with_cache_control(
+            content=content, cached_result_indices=cached_indices
+        )
+
 
 class AnthropicChatCompletionClient(
     BaseAnthropicChatCompletionClient, Component[AnthropicClientConfigurationConfigModel]
 ):
     """
-    Chat completion client for Anthropic's Claude models.
+    Chat completion client for Anthropic's Claude models with prompt caching support.
 
     Args:
         model (str): The Claude model to use (e.g., "claude-3-sonnet-20240229", "claude-3-opus-20240229")
@@ -1189,6 +1389,11 @@ class AnthropicChatCompletionClient(
         top_p (float, optional): Controls diversity via nucleus sampling. Default is 1.0.
         top_k (int, optional): Controls diversity via top-k sampling. Default is -1 (disabled).
         model_info (ModelInfo, optional): The capabilities of the model. Required if using a custom model.
+
+    This client provides convenient methods for prompt caching to reduce costs and improve performance:
+    - cached_system_message(): Create cached system messages
+    - cached_user_message(): Create cached user messages
+    - cached_tool_results(): Create cached tool results with granular control
 
     To use this client, you must install the Anthropic extension:
 
