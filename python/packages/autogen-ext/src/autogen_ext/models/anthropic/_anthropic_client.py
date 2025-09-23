@@ -966,6 +966,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         output_tokens: int = 0
         stop_reason: Optional[str] = None
         cache_read_tokens: int = 0
+        cache_write_tokens: int = 0
 
         first_chunk = True
         serialized_messages: List[Dict[str, Any]] = [self._serialize_message(msg) for msg in anthropic_messages]
@@ -1043,10 +1044,10 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                     # Extract cache tokens
                     usage_obj = chunk.message.usage
                     cache_read_tokens = getattr(usage_obj, 'cache_read_input_tokens', 0) or 0
+                    cache_write_tokens = getattr(usage_obj, 'cache_creation_input_tokens', 0) or 0
 
         # Prepare the final response
         cache_usage = None
-        cache_write_tokens = 0  # Streaming doesn't provide cache_creation_input_tokens yet
         if cache_read_tokens > 0 or cache_write_tokens > 0:
             cache_usage = CacheUsage(
                 cache_read_tokens=cache_read_tokens,

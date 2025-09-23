@@ -1655,3 +1655,79 @@ async def test_cache_write_tokens_tracking() -> None:
         assert result.usage.cache_usage.cache_read_tokens == 0
         assert result.usage.cache_usage.cache_write_tokens == 75
         assert result.cached is True  # Should be True when cache_usage exists
+
+
+@pytest.mark.asyncio
+async def test_streaming_cache_write_tokens_tracking() -> None:
+    """Test that cache_creation_input_tokens are properly tracked in streaming responses."""
+    # Create client with API key to avoid authentication errors
+    client = AnthropicChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        api_key="test-api-key"
+    )
+
+    # Mock the client's _client.messages.create method for streaming
+    with patch.object(client._client.messages, 'create', new_callable=AsyncMock) as mock_create:
+        # Create a mock stream with cache creation tokens
+        mock_stream = AsyncMock()
+
+        # Mock message_start event with cache tokens
+        message_start_chunk = MagicMock()
+        message_start_chunk.type = "message_start"
+        message_start_chunk.message = MagicMock()
+        message_start_chunk.message.usage = MagicMock()
+        message_start_chunk.message.usage.input_tokens = 100
+        message_start_chunk.message.usage.output_tokens = 0
+        message_start_chunk.message.usage.cache_read_input_tokens = 0
+        message_start_chunk.message.usage.cache_creation_input_tokens = 50  # Cache write tokens
+
+        # Mock content_block_start event
+        content_start_chunk = MagicMock()
+        content_start_chunk.type = "content_block_start"
+        content_start_chunk.content_block = MagicMock()
+        content_start_chunk.content_block.type = "text"
+
+        # Mock content_block_delta event
+        content_delta_chunk = MagicMock()
+        content_delta_chunk.type = "content_block_delta"
+        content_delta_chunk.delta = MagicMock()
+        content_delta_chunk.delta.type = "text_delta"
+        content_delta_chunk.delta.text = "Streaming response with cache creation"
+
+        # Mock message_delta event with final output tokens
+        message_delta_chunk = MagicMock()
+        message_delta_chunk.type = "message_delta"
+        message_delta_chunk.delta = MagicMock()
+        message_delta_chunk.delta.stop_reason = "end_turn"
+        message_delta_chunk.usage = MagicMock()
+        message_delta_chunk.usage.output_tokens = 25
+
+        # Set up the async iterator
+        mock_stream.__aiter__.return_value = [
+            message_start_chunk,
+            content_start_chunk,
+            content_delta_chunk,
+            message_delta_chunk
+        ]
+
+        mock_create.return_value = mock_stream
+
+        # Create a cached message that would trigger cache creation
+        cached_msg = client.cached_system_message("Large system prompt for streaming test")
+        user_msg = UserMessage(content="Hello streaming", source="user")
+
+        # Test streaming with cache creation
+        chunks = []
+        async for chunk in client.create_stream([cached_msg, user_msg]):
+            chunks.append(chunk)
+
+        # Verify we got chunks and final result
+        assert len(chunks) > 0
+        final_result = chunks[-1]
+        assert isinstance(final_result, CreateResult)
+
+        # Verify cache write tokens are tracked in streaming
+        assert final_result.usage.cache_usage is not None
+        assert final_result.usage.cache_usage.cache_read_tokens == 0
+        assert final_result.usage.cache_usage.cache_write_tokens == 50
+        assert final_result.cached is True
