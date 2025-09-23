@@ -124,14 +124,19 @@ system_msg = client.cached_system_message(
 
 ## Monitoring Cache Usage
 
-Check if caching was used and how many tokens were saved:
+Check if caching was used and how many tokens were saved or used for cache creation:
 
 ```python
 response = await client.create([cached_system_msg, user_msg])
 
 if response.usage.cache_usage:
-    cache_tokens = response.usage.cache_usage.cache_read_tokens
-    print(f"Cache hit! Saved {cache_tokens} tokens")
+    cache_read_tokens = response.usage.cache_usage.cache_read_tokens
+    cache_write_tokens = response.usage.cache_usage.cache_write_tokens
+
+    if cache_read_tokens > 0:
+        print(f"Cache hit! Saved {cache_read_tokens} tokens from cached content")
+    if cache_write_tokens > 0:
+        print(f"Cache creation: Used {cache_write_tokens} tokens to create cache entries")
 else:
     print("No cache usage in this request")
 
@@ -177,7 +182,9 @@ msg = AnthropicUserMessage(
 - Cache entries are ephemeral and expire after a short time
 - Cache keys are based on exact content matching
 - Only available with supported Anthropic models
-- Cache creation has a small cost, but cache reads provide significant savings
+- **Cache creation cost**: When content is first cached, you'll see `cache_write_tokens` representing the tokens used for cache creation
+- **Cache read savings**: When cached content is reused, you'll see `cache_read_tokens` representing tokens saved from the cache hit
+- Cache reads provide significant cost savings compared to reprocessing the same content
 
 ## Advanced Usage
 
