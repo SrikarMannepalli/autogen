@@ -7,13 +7,14 @@ client.cached_system_message() without needing to know about provider-specific m
 """
 
 import asyncio
+from typing import List
 
-from autogen_core.models import FunctionExecutionResult, SystemMessage, UserMessage
+from autogen_core.models import FunctionExecutionResult, LLMMessage, SystemMessage, UserMessage
 
 from autogen_ext.models.anthropic import AnthropicChatCompletionClient
 
 
-async def example_system_message_caching():
+async def example_system_message_caching() -> None:
     """Example: Cache a system message using the client's cached_system_message method."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
@@ -26,13 +27,13 @@ async def example_system_message_caching():
     # Regular user message (no caching)
     user_msg = UserMessage(content="Please review this Python function for potential improvements.", source="user")
 
-    messages = [system_msg, user_msg]
+    messages: List[LLMMessage] = [system_msg, user_msg]
 
     response = await client.create(messages=messages)
     print("System message cached for future requests:", response.content)
 
 
-async def example_user_message_caching():
+async def example_user_message_caching() -> None:
     """Example: Cache a user message containing large context using the client's cached_user_message method."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
@@ -56,13 +57,13 @@ async def example_user_message_caching():
     # Regular follow-up query (no caching)
     query_msg = UserMessage(content="Based on the provided context, what are the key concepts?", source="user")
 
-    messages = [system_msg, context_msg, query_msg]
+    messages: List[LLMMessage] = [system_msg, context_msg, query_msg]
 
     response = await client.create(messages=messages)
     print("Large context cached:", response.content)
 
 
-async def example_tool_result_caching():
+async def example_tool_result_caching() -> None:
     """Example: Cache specific tool execution results using the client's cached_tool_results method."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
@@ -87,13 +88,13 @@ async def example_tool_result_caching():
         cached_indices=[1],  # Cache only the expensive database query result (index 1)
     )
 
-    messages = [system_msg, user_msg, tool_msg]
+    messages: List[LLMMessage] = [system_msg, user_msg, tool_msg]
 
     response = await client.create(messages=messages)
     print("Expensive tool result cached:", response.content)
 
 
-async def example_granular_tool_caching():
+async def example_granular_tool_caching() -> None:
     """Example: Demonstrate granular control over individual tool results."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
@@ -111,7 +112,7 @@ async def example_granular_tool_caching():
         cached_indices=[1, 3],  # Cache the expensive results
     )
 
-    messages = [
+    messages: List[LLMMessage] = [
         SystemMessage(content="Process these tool results."),
         UserMessage(content="Analyze the results.", source="user"),
         tool_msg,
@@ -121,7 +122,7 @@ async def example_granular_tool_caching():
     print("Specific tool results cached with granular control:", response.content)
 
 
-async def example_combined_caching():
+async def example_combined_caching() -> None:
     """Example: Combine multiple cached message types with different caching strategies."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
@@ -145,18 +146,18 @@ async def example_combined_caching():
         content="What are potential performance issues in the user authentication module?", source="user"
     )
 
-    messages = [system_msg, codebase_context, query_msg]
+    messages: List[LLMMessage] = [system_msg, codebase_context, query_msg]
 
     response = await client.create(messages=messages)
     print("System and context cached with clean client methods:", response.content)
 
 
-async def example_mixed_message_types():
+async def example_mixed_message_types() -> None:
     """Example: Mix cached and regular message types in the same conversation."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
 
-    messages = [
+    messages: List[LLMMessage] = [
         # Cached system message using client method
         client.cached_system_message("You are a helpful coding assistant."),
         # Regular user message (no caching)
@@ -171,7 +172,7 @@ async def example_mixed_message_types():
     print("Mixed message types with selective caching:", response.content)
 
 
-async def example_cache_all_tool_results():
+async def example_cache_all_tool_results() -> None:
     """Example: Cache all tool results using cache_all parameter."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
@@ -186,7 +187,7 @@ async def example_cache_all_tool_results():
     # Cache all results using cache_all=True
     tool_msg = client.cached_tool_results(content=expensive_results, cache_all=True)
 
-    messages = [
+    messages: List[LLMMessage] = [
         SystemMessage(content="Process these expensive tool results."),
         UserMessage(content="Analyze all the data.", source="user"),
         tool_msg,
@@ -196,7 +197,7 @@ async def example_cache_all_tool_results():
     print("All tool results cached:", response.content)
 
 
-async def example_custom_cache_policy():
+async def example_custom_cache_policy() -> None:
     """Example: Using custom cache policies."""
 
     client = AnthropicChatCompletionClient(model="claude-3-5-sonnet-20241022")
@@ -211,13 +212,13 @@ async def example_custom_cache_policy():
         content="[Large persistent context that should be cached longer...]", source="user", policy="persistent"
     )
 
-    messages = [system_msg, user_msg]
+    messages: List[LLMMessage] = [system_msg, user_msg]
 
     response = await client.create(messages=messages)
     print("Messages cached with custom policy:", response.content)
 
 
-async def main():
+async def main() -> None:
     """Run all caching examples."""
     print("=== Anthropic Prompt Caching Examples (Client Methods) ===\n")
 

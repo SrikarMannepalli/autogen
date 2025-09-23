@@ -16,7 +16,7 @@ class AnthropicSystemMessage(SystemMessage):
 
     cache_control: Optional[CacheControl] = None
 
-    def __init__(self, content: str, cache_control: Optional[CacheControl] = None, **kwargs):
+    def __init__(self, content: str, cache_control: Optional[CacheControl] = None, **kwargs: Any):
         super().__init__(content=content, **kwargs)
         self.cache_control = cache_control
 
@@ -32,7 +32,7 @@ class AnthropicUserMessage(UserMessage):
     cache_control: Optional[CacheControl] = None
 
     def __init__(
-        self, content: Union[str, List[Any]], source: str, cache_control: Optional[CacheControl] = None, **kwargs
+        self, content: Union[str, List[Any]], source: str, cache_control: Optional[CacheControl] = None, **kwargs: Any
     ):
         super().__init__(content=content, source=source, **kwargs)
         self.cache_control = cache_control
@@ -48,12 +48,16 @@ class AnthropicFunctionExecutionResultMessage(FunctionExecutionResultMessage):
 
     cache_control_config: Optional[Dict[int, CacheControl]] = None
 
-    def __init__(self, content: List[Any], cache_control_config: Optional[Dict[int, CacheControl]] = None, **kwargs):
+    def __init__(
+        self, content: List[Any], cache_control_config: Optional[Dict[int, CacheControl]] = None, **kwargs: Any
+    ):
         super().__init__(content=content, **kwargs)
         self.cache_control_config = cache_control_config or {}
 
     def set_cache_control_for_result(self, index: int, cache_control: CacheControl) -> None:
         """Set cache control for a specific tool result by index."""
+        if self.cache_control_config is None:
+            self.cache_control_config = {}
         self.cache_control_config[index] = cache_control
 
     @classmethod
@@ -65,6 +69,8 @@ class AnthropicFunctionExecutionResultMessage(FunctionExecutionResultMessage):
         if cached_result_indices:
             for idx in cached_result_indices:
                 if idx < len(content):
+                    if instance.cache_control_config is None:
+                        instance.cache_control_config = {}
                     instance.cache_control_config[idx] = CacheControl(type="ephemeral")
         return instance
 

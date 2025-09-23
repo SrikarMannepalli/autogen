@@ -26,6 +26,7 @@ import tiktoken
 from anthropic import AsyncAnthropic, AsyncAnthropicBedrock, AsyncStream
 from anthropic.types import (
     Base64ImageSourceParam,
+    CacheControlEphemeralParam,
     ContentBlock,
     ImageBlockParam,
     Message,
@@ -212,15 +213,30 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
     if isinstance(message.content, str):
         content = __empty_content_to_whitespace(message.content)
         if cache_control:
-            return {
-                "role": "user",
-                "content": [{"type": "text", "text": content, "cache_control": {"type": cache_control.type}}],
-            }
+            return cast(
+                MessageParam,
+                {
+                    "role": "user",
+                    "content": [
+                        cast(
+                            TextBlockParam,
+                            {
+                                "type": "text",
+                                "text": content,
+                                "cache_control": CacheControlEphemeralParam(type=cache_control.type),
+                            },
+                        )
+                    ],
+                },
+            )
         else:
-            return {
-                "role": "user",
-                "content": content,
-            }
+            return cast(
+                MessageParam,
+                {
+                    "role": "user",
+                    "content": content,
+                },
+            )
     else:
         blocks: List[Union[TextBlockParam, ImageBlockParam]] = []
 
@@ -243,24 +259,42 @@ def user_message_to_anthropic(message: UserMessage) -> MessageParam:
 
         # Apply cache_control to the last text block if provided
         if cache_control and blocks:
-            for block in reversed(blocks):
-                if block.get("type") == "text":
-                    block["cache_control"] = {"type": cache_control.type}
+            for i, block in enumerate(reversed(blocks)):
+                if isinstance(block, dict) and block.get("type") == "text":
+                    # Replace the last text block with a version that has cache control
+                    idx = len(blocks) - 1 - i
+                    text_content = block.get("text", "")
+                    blocks[idx] = cast(
+                        TextBlockParam,
+                        {
+                            "type": "text",
+                            "text": text_content,
+                            "cache_control": CacheControlEphemeralParam(type=cache_control.type),
+                        },
+                    )
                     break
 
-        return {
-            "role": "user",
-            "content": blocks,
-        }
+        return cast(
+            MessageParam,
+            {
+                "role": "user",
+                "content": blocks,
+            },
+        )
 
 
-def system_message_to_anthropic(message: SystemMessage) -> Union[str, List[Dict[str, Any]]]:
+def system_message_to_anthropic(message: SystemMessage) -> Union[str, List[TextBlockParam]]:
     content = __empty_content_to_whitespace(message.content)
 
     # Apply cache_control if message has it (from AnthropicSystemMessage)
     cache_control = getattr(message, "cache_control", None)
     if cache_control:
-        return [{"type": "text", "text": content, "cache_control": {"type": cache_control.type}}]
+        return [
+            cast(
+                TextBlockParam,
+                {"type": "text", "text": content, "cache_control": CacheControlEphemeralParam(type=cache_control.type)},
+            )
+        ]
     else:
         return content
 
@@ -303,16 +337,22 @@ def assistant_message_to_anthropic(message: AssistantMessage) -> MessageParam:
 
         content_blocks.extend(tool_use_blocks)
 
-        return {
-            "role": "assistant",
-            "content": content_blocks,
-        }
+        return cast(
+            MessageParam,
+            {
+                "role": "assistant",
+                "content": content_blocks,
+            },
+        )
     else:
         # Simple text content
-        return {
-            "role": "assistant",
-            "content": message.content,
-        }
+        return cast(
+            MessageParam,
+            {
+                "role": "assistant",
+                "content": message.content,
+            },
+        )
 
 
 def tool_message_to_anthropic(message: FunctionExecutionResultMessage) -> List[MessageParam]:
@@ -330,21 +370,29 @@ def tool_message_to_anthropic(message: FunctionExecutionResultMessage) -> List[M
         cache_control_config = getattr(message, "cache_control_config", {})
         if idx in cache_control_config:
             cache_control = cache_control_config[idx]
-            tool_result_block["cache_control"] = {"type": cache_control.type}
+            tool_result_block["cache_control"] = CacheControlEphemeralParam(type=cache_control.type)
 
         content_blocks.append(tool_result_block)
 
     return [
-        {
-            "role": "user",  # Changed from "tool" to "user"
-            "content": content_blocks,
-        }
+        cast(
+            MessageParam,
+            {
+                "role": "user",  # Changed from "tool" to "user"
+                "content": content_blocks,
+            },
+        )
     ]
 
 
 def to_anthropic_type(message: LLMMessage) -> Union[str, List[MessageParam], MessageParam]:
     if isinstance(message, SystemMessage):
-        return system_message_to_anthropic(message)
+        result = system_message_to_anthropic(message)
+        # System messages are handled separately, but for type compatibility
+        # we cast List[TextBlockParam] to the expected return type
+        if isinstance(result, list):
+            return cast(List[MessageParam], result)
+        return result
     elif isinstance(message, UserMessage):
         return user_message_to_anthropic(message)
     elif isinstance(message, AssistantMessage):
@@ -636,8 +684,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                 if isinstance(anthropic_message, list):
                     anthropic_messages.extend(anthropic_message)
                 elif isinstance(anthropic_message, str):
-                    msg = MessageParam(
-                        role="user" if isinstance(message, UserMessage) else "assistant", content=anthropic_message
+                    msg = cast(
+                        MessageParam,
+                        {
+                            "role": "user" if isinstance(message, UserMessage) else "assistant",
+                            "content": anthropic_message,
+                        },
                     )
                     anthropic_messages.append(msg)
                 else:
@@ -864,8 +916,12 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                 if isinstance(anthropic_message, list):
                     anthropic_messages.extend(anthropic_message)
                 elif isinstance(anthropic_message, str):
-                    msg = MessageParam(
-                        role="user" if isinstance(message, UserMessage) else "assistant", content=anthropic_message
+                    msg = cast(
+                        MessageParam,
+                        {
+                            "role": "user" if isinstance(message, UserMessage) else "assistant",
+                            "content": anthropic_message,
+                        },
                     )
                     anthropic_messages.append(msg)
                 else:

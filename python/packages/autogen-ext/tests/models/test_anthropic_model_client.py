@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import List, Sequence
+from typing import List, Sequence, Union
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1438,7 +1438,7 @@ def test_cached_user_message_multipart_content() -> None:
     )
 
     # Test with multipart content
-    multipart_content = ["Hello", test_image, "What do you see?"]
+    multipart_content: List[Union[str, Image]] = ["Hello", test_image, "What do you see?"]
     cached_msg = client.cached_user_message(multipart_content, source="user", policy="persistent")
 
     assert isinstance(cached_msg, AnthropicUserMessage)
