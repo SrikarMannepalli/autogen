@@ -21,8 +21,10 @@ from autogen_core.tools import FunctionTool
 from autogen_ext.models.anthropic import (
     AnthropicBedrockChatCompletionClient,
     AnthropicChatCompletionClient,
+    AnthropicVertexChatCompletionClient,
     BaseAnthropicChatCompletionClient,
     BedrockInfo,
+    VertexInfo,
 )
 
 
@@ -1107,3 +1109,223 @@ async def test_streaming_tool_usage_with_arguments(provider: str) -> None:
     assert isinstance(content, FunctionCall)
     assert content.name == "add_numbers"
     assert json.loads(content.arguments) is not None
+
+
+# ===== Vertex Client Tests =====
+
+
+def test_vertex_client_initialization_success():
+    """Test successful initialization of AnthropicVertexChatCompletionClient."""
+    vertex_info = VertexInfo(
+        project_id="test-project-123",
+        region="us-east5"
+    )
+
+    client = AnthropicVertexChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        vertex_info=vertex_info
+    )
+
+    assert client._create_args["model"] == "claude-3-sonnet-20240229"
+    assert client._raw_config["vertex_info"]["project_id"] == "test-project-123"
+    assert client._raw_config["vertex_info"]["region"] == "us-east5"
+
+
+def test_vertex_client_initialization_missing_model():
+    """Test that missing model raises ValueError."""
+    vertex_info = VertexInfo(
+        project_id="test-project-123",
+        region="us-east5"
+    )
+
+    with pytest.raises(ValueError, match="model is required for AnthropicVertexChatCompletionClient"):
+        AnthropicVertexChatCompletionClient(vertex_info=vertex_info)
+
+
+def test_vertex_client_initialization_missing_vertex_info():
+    """Test that missing vertex_info raises ValueError."""
+    with pytest.raises(ValueError, match="vertex_info is required for AnthropicVertexChatCompletionClient"):
+        AnthropicVertexChatCompletionClient(model="claude-3-sonnet-20240229")
+
+
+def test_vertex_client_with_model_info():
+    """Test initialization with custom model_info."""
+    vertex_info = VertexInfo(
+        project_id="test-project-123",
+        region="us-east5"
+    )
+
+    custom_model_info = ModelInfo(
+        vision=True,
+        function_calling=True,
+        json_output=True,
+        family="test-family",
+        structured_output=False
+    )
+
+    client = AnthropicVertexChatCompletionClient(
+        model="custom-claude-model",
+        vertex_info=vertex_info,
+        model_info=custom_model_info
+    )
+
+    assert client.model_info == custom_model_info
+
+
+@pytest.mark.asyncio
+async def test_vertex_client_mock_create():
+    """Test basic create functionality with mocked client."""
+    from anthropic.types import TextBlock
+
+    # Create mock client and response
+    mock_client = AsyncMock()
+    mock_message = MagicMock()
+    mock_message.content = [TextBlock(type="text", text="Hello! I'm Claude.")]
+    mock_message.usage.input_tokens = 10
+    mock_message.usage.output_tokens = 5
+    mock_message.stop_reason = "end_turn"
+
+    mock_client.messages.create.return_value = mock_message
+
+    # Create real client but patch the underlying Anthropic client
+    vertex_info = VertexInfo(project_id="test-project", region="us-east5")
+    client = AnthropicVertexChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        vertex_info=vertex_info
+    )
+
+    messages: List[LLMMessage] = [
+        UserMessage(content="Hello", source="user"),
+    ]
+
+    with patch.object(client, "_client", mock_client):
+        result = await client.create(messages=messages)
+
+    # Verify the call was made
+    mock_client.messages.create.assert_called_once()
+
+    # Verify the result
+    assert result.content == "Hello! I'm Claude."
+    assert result.usage.prompt_tokens == 10
+    assert result.usage.completion_tokens == 5
+
+
+@pytest.mark.asyncio
+async def test_vertex_client_mock_tool_usage():
+    """Test tool usage with mocked client."""
+    from anthropic.types import ToolUseBlock
+
+    # Create mock client and response
+    mock_client = AsyncMock()
+    mock_message = MagicMock()
+    mock_message.content = [ToolUseBlock(type="tool_use", name="add_numbers", input={"a": 1, "b": 2}, id="call_123")]
+    mock_message.usage.input_tokens = 15
+    mock_message.usage.output_tokens = 8
+    mock_message.stop_reason = "tool_use"
+
+    mock_client.messages.create.return_value = mock_message
+
+    # Create real client
+    vertex_info = VertexInfo(project_id="test-project", region="us-east5")
+    client = AnthropicVertexChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        vertex_info=vertex_info
+    )
+
+    # Define tool
+    add_tool = FunctionTool(_add_numbers, description="Add two numbers together", name="add_numbers")
+
+    messages: List[LLMMessage] = [
+        UserMessage(content="What is 1 + 2?", source="user"),
+    ]
+
+    with patch.object(client, "_client", mock_client):
+        result = await client.create(
+            messages=messages,
+            tools=[add_tool],
+            tool_choice="auto"
+        )
+
+    # Verify the call
+    mock_client.messages.create.assert_called_once()
+    call_args = mock_client.messages.create.call_args
+    assert "tools" in call_args.kwargs
+    assert "tool_choice" in call_args.kwargs
+
+    # Verify tool call result
+    assert isinstance(result.content, list)
+    assert len(result.content) == 1
+    tool_call = result.content[0]
+    assert isinstance(tool_call, FunctionCall)
+    assert tool_call.name == "add_numbers"
+
+
+def test_vertex_client_serialization():
+    """Test that client can be serialized and deserialized."""
+    import pickle
+
+    vertex_info = VertexInfo(
+        project_id="test-project-456",
+        region="us-central1"
+    )
+
+    client = AnthropicVertexChatCompletionClient(
+        model="claude-3-haiku-20240307",
+        vertex_info=vertex_info,
+        temperature=0.7,
+        max_tokens=1000
+    )
+
+    # Serialize and deserialize
+    serialized = pickle.dumps(client)
+    deserialized = pickle.loads(serialized)
+
+    # Verify the deserialized client has same config
+    assert deserialized._create_args["model"] == "claude-3-haiku-20240307"
+    assert deserialized._create_args["temperature"] == 0.7
+    assert deserialized._create_args["max_tokens"] == 1000
+    assert deserialized._raw_config["vertex_info"]["project_id"] == "test-project-456"
+    assert deserialized._raw_config["vertex_info"]["region"] == "us-central1"
+
+
+def test_vertex_client_config_conversion():
+    """Test _to_config and _from_config methods."""
+    from autogen_ext.models.anthropic import AnthropicVertexClientConfigurationConfigModel
+
+    vertex_info = VertexInfo(
+        project_id="config-test-project",
+        region="europe-west1"
+    )
+
+    client = AnthropicVertexChatCompletionClient(
+        model="claude-3-opus-20240229",
+        vertex_info=vertex_info,
+        temperature=0.5
+    )
+
+    # Convert to config
+    config = client._to_config()
+    assert isinstance(config, AnthropicVertexClientConfigurationConfigModel)
+
+    # Create new client from config
+    new_client = AnthropicVertexChatCompletionClient._from_config(config)
+
+    # Verify equivalence
+    assert new_client._create_args["model"] == "claude-3-opus-20240229"
+    assert new_client._create_args["temperature"] == 0.5
+    assert new_client._raw_config["vertex_info"]["project_id"] == "config-test-project"
+    assert new_client._raw_config["vertex_info"]["region"] == "europe-west1"
+
+
+def test_vertex_client_component_attributes():
+    """Test that component attributes are set correctly."""
+    vertex_info = VertexInfo(project_id="test", region="us-east5")
+    client = AnthropicVertexChatCompletionClient(
+        model="claude-3-sonnet-20240229",
+        vertex_info=vertex_info
+    )
+
+    assert client.component_type == "model"
+    assert hasattr(client, "component_config_schema")
+    assert hasattr(client, "component_provider_override")
+    assert client.component_provider_override == "autogen_ext.models.anthropic.AnthropicVertexChatCompletionClient"
