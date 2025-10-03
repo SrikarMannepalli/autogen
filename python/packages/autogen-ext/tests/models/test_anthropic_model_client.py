@@ -1111,9 +1111,6 @@ async def test_streaming_tool_usage_with_arguments(provider: str) -> None:
     assert json.loads(content.arguments) is not None
 
 
-# ===== Vertex Client Tests =====
-
-
 def test_vertex_client_initialization_success() -> None:
     """Test successful initialization of AnthropicVertexChatCompletionClient."""
     vertex_info = VertexInfo(project_id="test-project-123", region="us-east5")
