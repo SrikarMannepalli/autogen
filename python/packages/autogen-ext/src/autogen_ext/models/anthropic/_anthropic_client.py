@@ -1419,7 +1419,6 @@ class AnthropicBedrockChatCompletionClient(
         return cls(**copied_config)
 
 
-
 class AnthropicVertexChatCompletionClient(
     BaseAnthropicChatCompletionClient, Component[AnthropicVertexClientConfigurationConfigModel]
 ):
@@ -1449,17 +1448,16 @@ class AnthropicVertexChatCompletionClient(
         from autogen_ext.models.anthropic import AnthropicVertexChatCompletionClient, VertexInfo
         from autogen_core.models import UserMessage
 
+
         async def main():
             vertex_client = AnthropicVertexChatCompletionClient(
                 model="claude-3-sonnet-20240229",
-                vertex_info=VertexInfo(
-                    project_id="your-gcp-project-id",
-                    region="us-east5"
-                )
+                vertex_info=VertexInfo(project_id="your-gcp-project-id", region="us-east5"),
             )
 
             result = await vertex_client.create([UserMessage(content="What is the capital of France?", source="user")])  # type: ignore
             print(result)
+
 
         if __name__ == "__main__":
             asyncio.run(main())
@@ -1474,10 +1472,7 @@ class AnthropicVertexChatCompletionClient(
             "provider": "AnthropicVertexChatCompletionClient",
             "config": {
                 "model": "claude-3-sonnet-20240229",
-                "vertex_info": {
-                    "project_id": "your-gcp-project-id",
-                    "region": "us-east5"
-                }
+                "vertex_info": {"project_id": "your-gcp-project-id", "region": "us-east5"},
             },
         }
 
