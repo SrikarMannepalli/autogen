@@ -99,6 +99,7 @@ anthropic_message_params = {
     "stream",
     "metadata",
     "thinking",
+    "output_config",
 }
 disallowed_create_args = {"stream", "messages"}
 required_create_args: Set[str] = {"model"}
@@ -753,7 +754,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                 request_args["tool_choice"] = converted_tool_choice
 
         # Optional parameters
-        for param in ["top_p", "top_k", "stop_sequences", "metadata"]:
+        for param in ["top_p", "top_k", "stop_sequences", "metadata", "output_config"]:
             if param in create_args:
                 request_args[param] = create_args[param]
 
@@ -986,7 +987,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
                 request_args["tool_choice"] = converted_tool_choice
 
         # Optional parameters
-        for param in ["top_p", "top_k", "stop_sequences", "metadata"]:
+        for param in ["top_p", "top_k", "stop_sequences", "metadata", "output_config"]:
             if param in create_args:
                 request_args[param] = create_args[param]
 
