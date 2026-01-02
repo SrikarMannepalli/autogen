@@ -16,6 +16,12 @@ class ThinkingConfig(TypedDict, total=False):
     budget_tokens: Optional[int]  # Required if type is "enabled"
 
 
+class OutputConfig(TypedDict, total=False):
+    """Configuration for output behavior."""
+
+    effort: Literal["low", "medium", "high"]
+
+
 class CreateArguments(TypedDict, total=False):
     model: str
     max_tokens: Optional[int]
@@ -26,6 +32,7 @@ class CreateArguments(TypedDict, total=False):
     response_format: Optional[ResponseFormat]
     metadata: Optional[Dict[str, str]]
     thinking: Optional[ThinkingConfig]
+    output_config: Optional[OutputConfig]
 
 
 class BedrockInfo(TypedDict):
@@ -72,6 +79,12 @@ class ThinkingConfigModel(BaseModel):
     budget_tokens: int | None = None  # Required if type is "enabled"
 
 
+class OutputConfigModel(BaseModel):
+    """Configuration for output behavior."""
+
+    effort: Literal["low", "medium", "high"] | None = None
+
+
 class CreateArgumentsConfigModel(BaseModel):
     model: str
     max_tokens: int | None = 4096
@@ -82,6 +95,7 @@ class CreateArgumentsConfigModel(BaseModel):
     response_format: ResponseFormat | None = None
     metadata: Dict[str, str] | None = None
     thinking: ThinkingConfigModel | None = None
+    output_config: OutputConfigModel | None = None
 
 
 class BaseAnthropicClientConfigurationConfigModel(CreateArgumentsConfigModel):
