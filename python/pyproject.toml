@@ -73,6 +73,7 @@ ignore = ["F401", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "docs/**.ipynb" = ["T20"]
+"packages/autogen-ext/src/autogen_ext/models/anthropic/_usage_examples.py" = ["T201"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 [tool.ruff.lint.flake8-tidy-imports.banned-api]

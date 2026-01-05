@@ -21,6 +21,7 @@ create-your-own
 :hidden:
 :caption: Guides
 
+anthropic-prompt-caching
 azure-container-code-executor
 azure-foundry-agent
 ```
