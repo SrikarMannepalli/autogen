@@ -60,6 +60,8 @@ class BaseAnthropicClientConfiguration(CreateArguments, total=False):
     timeout: Optional[float]
     max_retries: Optional[int]
     default_headers: Optional[Dict[str, str]]
+    betas: Optional[List[str]]
+    """List of beta feature identifiers to enable (e.g., ["effort-2025-11-24"]). When specified, the beta API will be used."""
 
 
 class AnthropicClientConfiguration(BaseAnthropicClientConfiguration, total=False):
@@ -106,6 +108,8 @@ class BaseAnthropicClientConfigurationConfigModel(CreateArgumentsConfigModel):
     timeout: float | None = None
     max_retries: int | None = None
     default_headers: Dict[str, str] | None = None
+    betas: List[str] | None = None
+    """List of beta feature identifiers to enable (e.g., ["effort-2025-11-24"]). When specified, the beta API will be used."""
 
 
 class AnthropicClientConfigurationConfigModel(BaseAnthropicClientConfigurationConfigModel):
