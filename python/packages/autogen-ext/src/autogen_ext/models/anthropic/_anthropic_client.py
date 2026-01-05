@@ -534,6 +534,7 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         *,
         create_args: Dict[str, Any],
         model_info: Optional[ModelInfo] = None,
+        betas: Optional[List[str]] = None,
     ):
         self._client = client
 
@@ -554,6 +555,9 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
 
         # Store last used tools for anthropic API requirement
         self._last_used_tools: List[ToolParam] = []
+
+        # Store beta feature identifiers
+        self._betas = betas
 
     def _serialize_message(self, message: MessageParam) -> Dict[str, Any]:
         """Convert an Anthropic MessageParam to a JSON-serializable format."""
@@ -623,6 +627,15 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             return {}
 
         return {"thinking": thinking_config}
+
+    def _get_betas(self) -> List[str]:
+        """
+        Get the list of beta feature identifiers to use.
+
+        Returns:
+            List of beta identifiers to use, or empty list if none configured
+        """
+        return self._betas if self._betas else []
 
     def _rstrip_last_assistant_message(self, messages: Sequence[LLMMessage]) -> Sequence[LLMMessage]:
         """
@@ -764,7 +777,14 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
             request_args.update(thinking_config)
 
         # Execute the request
-        future: asyncio.Task[Message] = asyncio.ensure_future(self._client.messages.create(**request_args))  # type: ignore
+        # Use beta API if betas are configured
+        betas = self._get_betas()
+        if betas:
+            future: asyncio.Task[Message] = asyncio.ensure_future(
+                self._client.beta.messages.create(betas=betas, **request_args)
+            )  # type: ignore
+        else:
+            future = asyncio.ensure_future(self._client.messages.create(**request_args))  # type: ignore
 
         if cancellation_token is not None:
             cancellation_token.link_future(future)  # type: ignore
@@ -1000,9 +1020,19 @@ class BaseAnthropicChatCompletionClient(ChatCompletionClient):
         stream_thought = extra_create_args.get("stream_thought", False)
 
         # Stream the response
-        stream_future: asyncio.Task[AsyncStream[RawMessageStreamEvent]] = asyncio.ensure_future(
-            cast(Coroutine[Any, Any, AsyncStream[RawMessageStreamEvent]], self._client.messages.create(**request_args))
-        )
+        # Use beta API if betas are configured
+        betas = self._get_betas()
+        if betas:
+            stream_future: asyncio.Task[AsyncStream[RawMessageStreamEvent]] = asyncio.ensure_future(
+                cast(
+                    Coroutine[Any, Any, AsyncStream[RawMessageStreamEvent]],
+                    self._client.beta.messages.create(betas=betas, **request_args),
+                )
+            )
+        else:
+            stream_future = asyncio.ensure_future(
+                cast(Coroutine[Any, Any, AsyncStream[RawMessageStreamEvent]], self._client.messages.create(**request_args))
+            )
 
         if cancellation_token is not None:
             cancellation_token.link_future(stream_future)  # type: ignore
@@ -1454,6 +1484,11 @@ class AnthropicChatCompletionClient(
             model_info = kwargs["model_info"]
             del copied_args["model_info"]
 
+        betas: Optional[List[str]] = None
+        if "betas" in kwargs:
+            betas = kwargs["betas"]
+            del copied_args["betas"]
+
         client = _anthropic_client_from_config(copied_args)
         create_args = _create_args_from_config(copied_args)
 
@@ -1461,6 +1496,7 @@ class AnthropicChatCompletionClient(
             client=client,
             create_args=create_args,
             model_info=model_info,
+            betas=betas,
         )
 
     def __getstate__(self) -> Dict[str, Any]:
@@ -1558,6 +1594,11 @@ class AnthropicBedrockChatCompletionClient(
             model_info = kwargs["model_info"]
             del copied_args["model_info"]
 
+        betas: Optional[List[str]] = None
+        if "betas" in kwargs:
+            betas = kwargs["betas"]
+            del copied_args["betas"]
+
         bedrock_info: Optional[BedrockInfo] = None
         if "bedrock_info" in kwargs:
             bedrock_info = kwargs["bedrock_info"]
@@ -1587,6 +1628,7 @@ class AnthropicBedrockChatCompletionClient(
             client=client,
             create_args=create_args,
             model_info=model_info,
+            betas=betas,
         )
 
     def __getstate__(self) -> Dict[str, Any]:
